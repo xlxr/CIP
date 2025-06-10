@@ -1,6 +1,5 @@
 
-# On exact approaches for interdicting connected
-dominating sets
+# On exact approaches for interdicting connected dominating sets
 
 This archive is distributed in association with the XXX under the [MIT License](LICENSE).
 
