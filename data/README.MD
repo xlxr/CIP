@@ -9,3 +9,5 @@ https://austinlbuchanan.github.io/files/CDS.zip
 For the real-life instances, we chose some networks from Buchanan et. al.'s paper cited above and some networks from different categories of Network Repository cited below and generate random weights and blocking costs.
 
 R. A. Rossi and N. K. Ahmed. The network data repository with interactive graph analytics and visualization. In AAAI, 2015. URL https://networkrepository.com.
+
+Network Rome99 can be downloaded from https://www.diag.uniroma1.it/challenge9/download.shtml.
