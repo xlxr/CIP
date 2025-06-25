@@ -23,8 +23,8 @@ Below is the BibTex for citing this snapshot of the repository.
   title =         {{On exact approaches for interdicting connected dominating sets}},
   year =          {2025},
   doi =           {XXX},
-  url =           {[[https://github.com/INFORMSJoC/2023.0027](https://github.com/xlxr/CIP)](https://github.com/xlxr/CIP)},
-  note =          {Available for download at [[https://github.com/INFORMSJoC/2023.0027](https://github.com/xlxr/CIP)](https://github.com/xlxr/CIP)},
+  url =           {[https://github.com/xlxr/CIP](https://github.com/xlxr/CIP)},
+  note =          {Available for download at [https://github.com/xlxr/CIP](https://github.com/xlxr/CIP)},
 }  
 ```
 
