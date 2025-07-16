@@ -449,7 +449,7 @@ void runmodel(string filename)
 	{
 		fout << "Yes" << ',';
 	}
-	else`	
+	else
 	{
 		fout << "No" << ',';
 	}
