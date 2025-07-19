@@ -608,8 +608,8 @@ void branch(CDSI_instance& instance, list<node>& tree, int& node_count)
 			return;
 		}
 	}
-	tree.push_back(tpnode);
 	tree.push_back(tqnode);
+	tree.push_back(tpnode);
 }
 
 char ContainEST(CDSI_instance& instance, node& tq, vector<EST>& estlist, clock_t start,double ttl)
