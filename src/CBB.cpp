@@ -228,7 +228,7 @@ int main()
 		getline(fin, str3);
 		runmodel(str3);
 	}
-	fin.open("filename_random.txt");
+	fin.open("filename-random.txt");
 	fin >> number_of_files;
 	//finish reading the current line
 	getline(fin, str3);
