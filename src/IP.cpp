@@ -1,7 +1,4 @@
-//add a lazy cut of an EST each time
-//use the a,b seperator based IP formulation to detect EST
-//use min cut at the beginning
-#include <vector>
+#include <vector>/
 using namespace std;
 #include <list>
 //To be able to use list
@@ -17,8 +14,35 @@ using namespace std;
 
 #include <algorithm>//sort
 #include <regex>
-
+#include <numeric> 
 using namespace std;
+
+struct DSU {
+	int n;
+	vector<int> parent, rnk;
+
+	DSU(int n_ = 0) { init(n_); }
+
+	void init(int n_) {
+		n = n_;
+		parent.resize(n);
+		rnk.assign(n, 0);
+		iota(parent.begin(), parent.end(), 0);
+	}
+
+	int find(int x) {
+		if (parent[x] == x) return x;
+		return parent[x] = find(parent[x]);
+	}
+
+	void unite(int a, int b) {
+		a = find(a);
+		b = find(b);
+		if (rnk[a] < rnk[b]) swap(a, b);
+		parent[b] = a;
+		if (rnk[a] == rnk[b]) ++rnk[a];
+	}
+};
 
 class vertex
 {
@@ -126,7 +150,10 @@ public:
 	}
 };
 
-bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& instance, char* eta_ST, clock_t start, clock_t total_time_limit,string);
+bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& instance, char* eta_ST, clock_t start, clock_t total_time_limit, string); \
+bool is_graph_connected(const vector<vector<int>>& neighbor);
+int check_connectivity(vector<vector<int>>& neighbor, vector<char>& selected_vertices2, vector<int>& selected_vertices1);
+vector<int> make_minimal_vertex_cut(vector<vector<int>>& neighbor, const vector<int>& C1, vector<char>& C2);
 int get_ST(CDSI_instance& instance, vector<vector<int>>& neighbor, int D, vector<char>& D2, vector<int>& STE);
 bool check_full_cycle(CDSI_instance& instance, vector<int>& remain_edges, vector<char>& D2, int D_size, int headD, int tailD, vector<int> EST);
 char check_arc_cycle(CDSI_instance& instance, vector<int>& remain_edges, vector<char>& D2, int D_size, int headD, int tailD, vector<int> EST);
@@ -144,7 +171,7 @@ public:
 	double minS;
 	vector<int> min_cut;
 	string filename;
-	mycallback(int xnumvars, GRBVar* xvarsx, CDSI_instance& xinstance, int* t, int* a, int* c, lazy_status* ls, double mS, vector<int>& mcut,string fn)
+	mycallback(int xnumvars, GRBVar* xvarsx, CDSI_instance& xinstance, int* t, int* a, int* c, lazy_status* ls, double mS, vector<int>& mcut, string fn)
 	{
 		numx = xnumvars;
 		varsx = xvarsx;
@@ -164,7 +191,6 @@ protected:
 				// MIP solution callback
 				if ((*lazy_s).not_TL) {
 					(*lazy_s).bound = getDoubleInfo(GRB_CB_MIPSOL_OBJBND);
-					(*lazy_s).solution = getDoubleInfo(GRB_CB_MIPSOL_OBJBST);
 				}
 				double* x = getSolution(varsx, numx);
 				vector<int> remain_edges;
@@ -182,8 +208,17 @@ protected:
 
 				vector<int> eta_est;
 				char eta_ST = 0;
-				bool reach_time_limit = get_EST(remain_edges, eta_est, instance, &eta_ST, (*lazy_s).start, (*lazy_s).total_time_limit,filename);
-				if (eta_est.size() > 0)
+				bool reach_time_limit = get_EST(remain_edges, eta_est, instance, &eta_ST, (*lazy_s).start, (*lazy_s).total_time_limit, filename);
+				if (reach_time_limit)
+				{
+					(*lazy_s).not_TL = false;
+					ofstream fout;
+					fout.open(filename, std::ios_base::app);
+					fout << "Manual abort called now" << endl;
+					fout.close();
+					abort();
+				}
+				else if (eta_est.size() > 0)
 				{
 					GRBLinExpr lhs = NULL;
 					for (int i = 0; i < eta_est.size(); i++)
@@ -209,24 +244,13 @@ protected:
 					}
 					((*lazy_s).number_of_lazy)++;
 				}
-				else if (reach_time_limit)
-				{
-					(*lazy_s).bound = getDoubleInfo(GRB_CB_MIPSOL_OBJBND);
-					(*lazy_s).solution = getDoubleInfo(GRB_CB_MIPSOL_OBJBST);
-					(*lazy_s).not_TL = false;
-					ofstream fout;
-					fout.open(filename, std::ios_base::app);
-					fout << "Manual abort called now" << endl;
-					fout.close();
-					abort();
-				}
 				else
 				{
 					(*lazy_s).solution = getDoubleInfo(GRB_CB_MIPSOL_OBJ);
 					int temps = getDoubleInfo(GRB_CB_MIPSOL_OBJ);
 					if (temps == static_cast<int>(minS))
 					{
-						bool equal=true;
+						bool equal = true;
 						vector<int> temp_set;
 						for (int i = 0; i < numx; i++)
 						{
@@ -266,19 +290,11 @@ protected:
 			else if (where == GRB_CB_MIP) {
 				// MIP callback
 				if ((*lazy_s).not_TL) {
-					(*lazy_s).solution = getDoubleInfo(GRB_CB_MIP_OBJBST);
 					(*lazy_s).bound = getDoubleInfo(GRB_CB_MIP_OBJBND);
 					if (getDoubleInfo(GRB_CB_MIP_NODCNT) == 0) {
 						(*lazy_s).root_lb = getDoubleInfo(GRB_CB_MIP_OBJBND);
 						(*lazy_s).root_ub = getDoubleInfo(GRB_CB_MIP_OBJBST);
 					}
-				}
-			}
-			else if (where == GRB_CB_MIPNODE) {
-			// MIP node callback
-				if ((*lazy_s).not_TL) {
-					(*lazy_s).solution = getDoubleInfo(GRB_CB_MIPNODE_OBJBST);
-					(*lazy_s).bound = getDoubleInfo(GRB_CB_MIPNODE_OBJBND);
 				}
 			}
 			else if (where == GRB_CB_MESSAGE) {
@@ -301,6 +317,72 @@ protected:
 			}
 		}
 		catch (GRBException e) {
+			ofstream fout;
+			fout.open(filename, std::ios_base::app);
+			fout << "Error number: " << e.getErrorCode() << endl;
+			fout << e.getMessage() << endl;
+			fout.close();
+		}
+		catch (...) {
+			ofstream fout;
+			fout.open(filename, std::ios_base::app);
+			fout << "Error during callback" << endl;
+			fout.close();
+		}
+	}
+};
+
+class mycallback2 : public GRBCallback
+{
+public:
+	int numx;//number of variable x
+	GRBVar* varsx;
+	vector < vector<int>> neighbor;
+	double total_time_limit;
+	mycallback2(int xnumvars, GRBVar* xvarsx, vector < vector<int>>& nb, double ttl)
+	{
+		numx = xnumvars;
+		varsx = xvarsx;
+		neighbor = nb;
+		total_time_limit = ttl;
+	}
+protected:
+	void callback() {
+		try {
+			if (where == GRB_CB_MIPSOL) {
+				double* x = getSolution(varsx, numx);
+				vector<char> selected_vertices2(numx, 'F');
+				vector<int> selected_vertices1;
+				for (int i = 0; i < numx; i++)
+				{
+					if (x[i] > 0.5)
+					{//not block
+						selected_vertices1.push_back(i);
+						selected_vertices2[i] = 'T';
+					}
+				}
+
+				if (!check_connectivity(neighbor, selected_vertices2, selected_vertices1)) {//notconnected
+					vector<int> C1;
+					vector<char> C2(selected_vertices2.size(), 'F');
+					for (int i = 0; i < selected_vertices2.size(); i++) {
+						if (selected_vertices2[i] == 'F') {
+							C2[i] = 'T';
+							C1.push_back(i);
+						}
+					}
+					vector<int> minimal_vc = make_minimal_vertex_cut(neighbor, C1, C2);
+					GRBLinExpr lhs = NULL;
+					for (int i = 0; i < minimal_vc.size(); i++)
+					{
+						lhs += varsx[minimal_vc[i]];
+					}
+					addLazy(lhs >= 1);
+				}
+				delete[] x;
+			}
+		}
+		catch (GRBException e) {
 			cout << "Error number: " << e.getErrorCode() << endl;
 			cout << e.getMessage() << endl;
 		}
@@ -309,6 +391,7 @@ protected:
 		}
 	}
 };
+
 
 int readdata(CDSI_instance& instance, string filename);
 
@@ -320,8 +403,8 @@ void MINIMUMCUTPHASE(CDSI_instance& instance, graph& G, vector<int>& edge_MC, do
 int main()
 {
 	ofstream fout;
-	fout.open("CDSI_lazy.csv");
-	fout << "File Name,|V|,density,Eta,number_of_lazy,gurobi_#lazy,#tree,#arc,#cycle,Time Limit (s),Run Time (s),Gurobi gap,Gurobi ub,Gurobi lb,manual gap, manual ub, manual lb,root gap,root ub,root lb,take_start, Nodes #,min_cut,mincut not optimal, alternative solution" << endl;
+	fout.open("IP.csv");
+	fout << "File Name,|V|,density,Eta,number_of_lazy,gurobi_#lazy,#tree,#arc,#cycle,Time Limit (s),Run Time (s),Gurobi gap,Gurobi ub,Gurobi lb,manual gap, manual ub, manual lb,root gap,root ub,root lb,take_start, Nodes #,min_cut,mincut not optimal, alternative solution,Sols" << endl;
 	fout.close();
 
 	ifstream fin;
@@ -346,6 +429,17 @@ int main()
 		getline(fin, str3);
 		runmodel(str3);
 	}
+
+	fin.open("filename.txt");
+	fin >> number_of_files;
+	//finish reading the current line
+	getline(fin, str3);
+	for (int i = 0; i < number_of_files; i++)
+	{
+		getline(fin, str3);
+		runmodel(str3);
+	}
+	fin.close();
 	return 0;
 }
 
@@ -406,7 +500,7 @@ void runmodel(string filename)
 	// Create a callback object and associate it with the model
 	int ntree = 0, narc = 0, ncycle = 0;
 	lazy_status ls = lazy_status(total_time_limit, pre_process_start);
-	mycallback cb = mycallback(instance.one_d.size(), x, instance, &ntree, &narc, &ncycle, &ls, incumbent_cost, UB_solution,fn);
+	mycallback cb = mycallback(instance.one_d.size(), x, instance, &ntree, &narc, &ncycle, &ls, incumbent_cost, UB_solution, fn);
 
 	model.setCallback(&cb);
 	clock_t now = clock();
@@ -415,12 +509,12 @@ void runmodel(string filename)
 	model.optimize();
 	clock_t end_time = clock();
 
-	fout.open("CDSI_lazy.csv", std::ios_base::app);
+	fout.open("IP.csv", std::ios_base::app);
 	fout << filename << ',' << instance.vertices.size();
 	double density = number_of_edges / (static_cast<double>(instance.vertices.size() * (instance.vertices.size() - 1)) / 2);
 	fout << ',' << density << ',' << instance.desired_clique_weight;
 	fout << ',' << ls.number_of_lazy;
-	fout<<','<<ls.gurobi_lazy << "," << ntree << "," << narc << "," << ncycle;
+	fout << ',' << ls.gurobi_lazy << "," << ntree << "," << narc << "," << ncycle;
 	fout << ',' << total_time_limit << ",";
 
 	if (model.get(GRB_IntAttr_Status) == GRB_INTERRUPTED)
@@ -447,7 +541,12 @@ void runmodel(string filename)
 	fout << model.get(GRB_DoubleAttr_ObjVal) << ',';
 	fout << model.get(GRB_DoubleAttr_ObjBoundC) << ',';
 	fout << (ls.solution - ls.bound) / ls.solution << ',';
-	fout << ls.solution << ',';
+	if (ls.aos == 0 && ls.take_start) {
+		fout << incumbent_cost << ',';
+	}
+	else {
+		fout << ls.solution << ',';
+	}
 	fout << ls.bound << ',';
 	fout << (ls.root_ub - ls.root_lb) / ls.root_ub << ',';
 	fout << ls.root_ub << ',';
@@ -464,6 +563,20 @@ void runmodel(string filename)
 		fout << "No" << ',';
 	}
 	fout << ls.aos << ',';
+	vector<bool> solutions;
+	solutions.reserve(instance.one_d.size());
+	for (int i = 0; i < instance.one_d.size(); i++)
+	{
+		solutions.push_back(x[i].get(GRB_DoubleAttr_X));
+	}
+	for (int i = 0; i < instance.one_d.size(); i++)
+	{
+		if (solutions[i])
+		{
+			fout << '(' << instance.one_d[i].head + 1 << ';' << instance.one_d[i].tail + 1 << ')' << ' ';
+
+		}
+	}
 	fout << endl;
 	fout.close();
 	delete[] x;
@@ -588,8 +701,22 @@ void MINIMUMCUTPHASE(CDSI_instance& instance, graph& G, vector<int>& edge_MC, do
 	G.two_d.pop_back();
 }
 
-bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& instance, char* eta_ST, clock_t start, clock_t total_time_limit,string fn)
+bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& instance, char* eta_ST, clock_t start, clock_t total_time_limit, string fn)
 {//return true if reach time limit, else return false, eta_ST is 'A' for arc,'C' for cycle,'T' for tree
+	vector<vector<int>> neighbor;//neighbor of remaining network
+	neighbor.resize(instance.vertices.size());
+	for (int i = 0; i < instance.vertices.size(); i++) {
+		for (int j = i + 1; j < instance.vertices.size(); j++) {
+			if (instance.two_d[i][j] != -1 && remain_edges[instance.two_d[i][j]] == 1) {
+				neighbor[i].push_back(j);
+				neighbor[j].push_back(i);
+			}
+		}
+	}
+
+	if (!is_graph_connected(neighbor)) {
+		return false;
+	}
 	//Defining Gurobi environment
 	GRBEnv* sub_env = new GRBEnv();
 
@@ -599,144 +726,41 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 	// Decision variables
 	GRBVar* y = NULL;
 	y = sub_model.addVars(instance.vertices.size(), GRB_BINARY);
-	GRBVar**** z = NULL;
-	int ab_size = instance.total_edge - instance.one_d.size();
-	z = new GRBVar ***[instance.vertices.size()];
-	vector<vector<int>> neighbor;
-	vector<vector<int>> not_adjacent;
-	neighbor.resize(instance.vertices.size());
-	not_adjacent.resize(instance.vertices.size() - 1);
-	for (int i = 0; i < instance.vertices.size(); i++)
-	{
-		for (int j = i + 1; j < instance.vertices.size(); j++)
-		{
-			if (instance.two_d[i][j] == -1)
-			{
-				not_adjacent[i].push_back(j);
-			}
-			else if (remain_edges[instance.two_d[i][j]] == 0)
-			{
-				not_adjacent[i].push_back(j);
-			}
-			else
-			{
-				neighbor[i].push_back(j);
-				neighbor[j].push_back(i);
-			}
-		}
-	}
-	for (int a = 0; a < not_adjacent.size(); a++)
-	{
-		z[a] = new GRBVar * *[not_adjacent[a].size()];
-		for (int b = 0; b < not_adjacent[a].size(); b++)
-		{
-			z[a][b] = new GRBVar * [instance.vertices.size()];
-			for (int i = 0; i < instance.vertices.size(); i++)
-			{
-				z[a][b][i] = sub_model.addVars(neighbor[i].size());
-				for (int j = 0; j < neighbor[i].size(); j++)
-				{
-					z[a][b][i][j].set(GRB_DoubleAttr_LB, 0);
-					z[a][b][i][j].set(GRB_DoubleAttr_UB, 1);
-				}
-			}
-		}
-	}
+	// Must set LazyConstraints parameter when using lazy constraints
+	sub_model.set(GRB_IntParam_LazyConstraints, 1);
+	mycallback2 cb = mycallback2(instance.vertices.size(), y, neighbor, total_time_limit);
+	sub_model.setCallback(&cb);
 	clock_t now = clock();
 	double passing_time = static_cast<double>(now - start) / CLOCKS_PER_SEC;
 	double optimization_time_limit = total_time_limit - passing_time;
-	if (optimization_time_limit <= 0)
-	{//reach time limit
-		ofstream fout;
-		fout.open(fn, std::ios_base::app);
-		fout << "Time limit in callback model building." << endl;
+	if (optimization_time_limit <= 0){//reach time limit
 		return true;
 	}
-	
-	GRBLinExpr lh3a = 0, lh3c = 0, lh3d = 0, lh3e = 0;
+	//Initial constraints
 	GRBLinExpr lh3b = 0;
-	for (int i = 0; i < instance.vertices.size(); i++)
-	{
-		lh3a = y[i];
-		for (int j = 0; j < neighbor[i].size(); j++)
-		{
-			lh3a += y[neighbor[i][j]];
-		}
-		sub_model.addConstr(lh3a, GRB_GREATER_EQUAL, 1);
+	for (int i = 0; i < neighbor.size(); i++) {
 		lh3b += y[i] * instance.vertices[i].vertex_weight;
-	}
-	sub_model.addConstr(lh3b, GRB_LESS_EQUAL, instance.desired_clique_weight - 0.00001);
-	for (int a = 0; a < not_adjacent.size(); a++)
-	{
-		for (int b = 0; b < not_adjacent[a].size(); b++)
-		{
-			int nab = not_adjacent[a][b];
-			for (int i = 0; i < instance.vertices.size(); i++)
-			{
-				lh3c = -y[i];
-				for (int j = 0; j < neighbor[i].size(); j++)
-				{
-					lh3c += z[a][b][i][j];
-				}
-				sub_model.addConstr(lh3c, GRB_LESS_EQUAL, 0);
-				if (i != a && i != nab)
-				{
-					lh3e = 0;
-					for (int j = 0; j < neighbor[i].size(); j++)
-					{
-						lh3e += z[a][b][i][j];
-						int nij = neighbor[i][j];
-						int niji;
-						for (int k = 0; k < neighbor[nij].size(); k++)
-						{
-							if (neighbor[nij][k] == i)
-							{
-								niji = k;
-								break;
-							}
-						}
-						lh3e -= z[a][b][nij][niji];
-					}
-					sub_model.addConstr(lh3e, GRB_EQUAL, 0);
-				}
-			}
-			lh3d = y[a] + y[not_adjacent[a][b]];
-			for (int i = 0; i < neighbor[a].size(); i++)
-			{
-				int nai = neighbor[a][i];
-				int naia;
-				for (int j = 0; j < neighbor[nai].size(); j++)
-				{
-					if (neighbor[nai][j] == a)
-					{
-						naia = j;
-						break;
-					}
-				}
-				lh3d -= z[a][b][a][i] - z[a][b][nai][naia];
-			}
-			sub_model.addConstr(lh3d, GRB_LESS_EQUAL, 1);
+		GRBLinExpr initial_constraints = 0;
+		for (int v : neighbor[i]) {
+			initial_constraints += y[v];
 		}
-
+		sub_model.addConstr(initial_constraints, GRB_GREATER_EQUAL, 1);
 	}
+	sub_model.addConstr(lh3b, GRB_LESS_EQUAL, instance.desired_clique_weight - 0.0001);
 	sub_model.set(GRB_IntParam_Threads, 1);
 	clock_t build_end = clock();
 
 	passing_time = static_cast<double>(build_end - start) / CLOCKS_PER_SEC;
 	optimization_time_limit = total_time_limit - passing_time;
-	if (optimization_time_limit <= 0)
-	{//reach time limit
+	if (optimization_time_limit <= 0{//reach time limit
 		return true;
 	}
 	sub_model.set(GRB_DoubleParam_TimeLimit, optimization_time_limit);
 	sub_model.update();
 
 	sub_model.optimize();
-	ofstream fout;
-	fout.open(fn, std::ios_base::app);
-	fout << "Lazy_status:" << sub_model.get(GRB_IntAttr_Status) << endl;
-	if (sub_model.get(GRB_IntAttr_Status) == GRB_OPTIMAL)
-	{
+
+	if (sub_model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
 		vector<char> yisD;
 		yisD.resize(instance.vertices.size(), 'F');
 		int headD;//store a vertex in D as the root of spanning tree
@@ -785,24 +809,156 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 			}
 		}
 		delete[] y;
-		delete[] z;
 		delete sub_env;
 		return false;
 	}
 	else if (sub_model.get(GRB_IntAttr_Status) == GRB_TIME_LIMIT)
 	{
 		delete[] y;
-		delete[] z;
 		delete sub_env;
 		return true;
 	}
 	else
 	{
 		delete[] y;
-		delete[] z;
 		delete sub_env;
 		return false;
 	}
+}
+bool is_graph_connected(const vector<vector<int>>& neighbor)
+{
+	int n = static_cast<int>(neighbor.size());
+	if (n <= 1) return true;
+
+	int start = -1;
+	for (int i = 0; i < n; ++i) {
+		if (!neighbor[i].empty()) {
+			start = i;
+			break;
+		}
+	}
+
+	// If all vertices are isolated, graph is connected only when n == 1
+	if (start == -1) return false;
+
+	vector<char> visited(n, 'F');
+	queue<int> q;
+	q.push(start);
+	visited[start] = 'T';
+
+	int reached = 1;
+	while (!q.empty()) {
+		int u = q.front();
+		q.pop();
+		for (int v : neighbor[u]) {
+			if (visited[v] == 'F') {
+				visited[v] = 'T';
+				q.push(v);
+				++reached;
+			}
+		}
+	}
+
+	return reached == n;
+}
+int check_connectivity(vector<vector<int>>& neighbor, vector<char>& selected_vertices2, vector<int>& selected_vertices1) {
+	//check connectivity with breadth first search strategy,return true if connected
+	vector<char> accessD;
+	accessD.resize(selected_vertices2.size(), 'F');
+	queue<int> searchQ;//the queue for searching
+	accessD[selected_vertices1[0]] = 'T';
+	searchQ.push(selected_vertices1[0]);
+	int addcount = 1;
+	while (!searchQ.empty()) {
+		int tV = searchQ.front();
+		searchQ.pop();
+		for (int nti : neighbor[tV]) {
+			if (selected_vertices2[nti] == 'T' && accessD[nti] == 'F') {
+				searchQ.push(nti);
+				accessD[nti] = 'T';
+				addcount++;
+			}
+		}
+	}
+	return addcount == selected_vertices1.size();
+}
+
+vector<int> make_minimal_vertex_cut(vector<vector<int>>& neighbor, const vector<int>& C1, vector<char>& C2) {
+	int n = static_cast<int>(neighbor.size());
+	vector<char> inC = C2;
+	std::vector<int> CprimeList;
+	for (int v : C1) {
+		bool hasOutsideNeighbor = false;
+		for (int w : neighbor[v]) {
+			if (C2[w] == 'F') { // neighbor not in original C
+				hasOutsideNeighbor = true;
+				break;
+			}
+		}
+		if (hasOutsideNeighbor) {
+			CprimeList.push_back(v); // keep v in C'
+		}
+		else {
+			inC[v] = 'F'; // drop v from C'
+		}
+	}
+	DSU dsu(n);
+	for (int u = 0; u < n; ++u) {
+		if (inC[u] == 'T') continue; // u is in C', not in S
+		for (int v : neighbor[u]) {
+			if (inC[v] == 'F') {
+				dsu.unite(u, v);
+			}
+		}
+	}
+	auto get_component_roots = [&](const vector<char>& inC_ref) {
+		vector<char> rootSeen(n, 'F');
+		vector<int> roots;
+		for (int v = 0; v < n; ++v) {
+			if (inC_ref[v] == 'T') continue; // only vertices in S
+			int r = dsu.find(v);
+			if (rootSeen[r] == 'F') {
+				rootSeen[r] = 1;
+				roots.push_back(r);
+			}
+		}
+		return roots; // DSU roots representing components in S
+	};
+	for (int v : CprimeList) {
+		if (inC[v] == 'F') continue; // might have been removed earlier; skip
+		// Current components S of G[V \ C']
+		vector<int> roots = get_component_roots(inC);
+		int numComponents = static_cast<int>(roots.size());
+		// Track which component roots are touched by neighbors of v.
+		vector<char> touchedRoot(n, 'F');
+		int touchedCount = 0;
+		for (int w : neighbor[v]) {
+			if (inC[w] == 'T') continue; // neighbors in C' don't belong to S
+			int r = dsu.find(w);
+			if (touchedRoot[r] == 'F') {
+				touchedRoot[r] = 'T';
+				++touchedCount;
+			}
+		}
+		// If v has a neighbor in EVERY connected component of S, keep v in C'
+		if (touchedCount == numComponents) {
+			continue;
+		}
+		inC[v] = 'F'; // v joins S = V \ C'
+
+		for (int w : neighbor[v]) {
+			if (inC[w] == 'F') { // w is in S
+				dsu.unite(v, w);
+			}
+		}
+	}
+
+	// Collect the final C' = { v : inC[v] == 1 }
+	vector<int> Cprime;
+	for (int v = 0; v < n; ++v) {
+		if (inC[v] == 'T') Cprime.push_back(v);
+	}
+	return Cprime;
 }
 
 int get_ST(CDSI_instance& instance, vector<vector<int>>& neighbor, int D, vector<char>& D2, vector<int>& STE)
@@ -1019,7 +1175,7 @@ char check_arc_cycle(CDSI_instance& instance, vector<int>& remain_edges, vector<
 			}
 			if (h == VnotinD)
 			{
-				if (t = headD)
+				if (t == headD)
 				{
 					if (instance.total_weight - instance.vertices[tailD].vertex_weight - instance.vertices[VnotinD].vertex_weight >= instance.desired_clique_weight)
 					{
@@ -1046,7 +1202,7 @@ char check_arc_cycle(CDSI_instance& instance, vector<int>& remain_edges, vector<
 			}
 			else if (t == VnotinD)
 			{
-				if (h = headD)
+				if (h == headD)
 				{
 					if (instance.total_weight - instance.vertices[tailD].vertex_weight - instance.vertices[VnotinD].vertex_weight >= instance.desired_clique_weight)
 					{
