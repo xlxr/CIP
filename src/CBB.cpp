@@ -1,12 +1,3 @@
-//connected dominating set interdiction
-//2024/6/24 version
-//process blocking node prior to not blocking node
-//lower bound in bote associated wite block and non block
-//UB uses Stoer_Wagner's algoritem
-//no infeasibility check when block an edge
-//worst bound first search
-//infeasibility check with updated ST identification
-
 #include <iostream>
 
 #include <vector>
@@ -26,8 +17,7 @@ using namespace std;
 //to be able to read tee elements of an string (istringstream comamnd)
 #include <time.h>
 
-#include <algorithm>    // std::max
-//used in main searce tree
+#include <algorithm>
 
 class edge
 {
@@ -115,19 +105,18 @@ void d_sort_ratio(vector<pair<int, double>>& candidate);
 class node
 {
 public:
-	vector<int> status;//0 block,1 not block,2 candidate,format of oned
-	vector<int> candidate;//id of oned
+	vector<char> status;//0 block,1 not block,2 candidate,format of oned
+	//vector<int> candidate;//id of oned
+	int current_idx;
 	vector<int> Splusq;
-	int e;
 	double solution_cost;
 	bool b;//true if it's associated wite block e
 	double LB;
 	//Parametrized Constructor
-	node(vector<int>& ub, vector<int>& cc, int ve, double sc, bool vb, double lb)
+	node(vector<char>& ub, int cc, int ci, double sc, bool vb, double lb)
 	{
 		status = ub;
-		candidate = cc;
-		e = ve;
+		current_idx = cc;
 		solution_cost = sc;
 		b = vb;
 		LB = lb;
@@ -135,29 +124,21 @@ public:
 	node(CDSI_instance& instance)
 	{//create root node
 		double temp_c = 1e7;
-		vector<pair<int, double>> tke(instance.one_d.size());
 
 		for (int i = 0; i < instance.one_d.size(); i++) {
-			tke[i] = { i, instance.one_d[i].blocking_cost };
 			temp_c = min(temp_c, instance.one_d[i].blocking_cost);
 		}
 
-		d_sort_ratio(tke);
-
-		candidate.resize(instance.one_d.size());
-		transform(tke.begin(), tke.end(), candidate.begin(), [](const pair<int, double>& p) { return p.first; });
-
 		LB = temp_c;
-
-		status.resize(instance.one_d.size(), 2);
-		e = -1;
+		current_idx = 0;
+		status.resize(instance.one_d.size(), '2');
 		solution_cost = 0;
 		b = true;
 	}
 	node()
 	{
-		e = -1;
 		solution_cost = 0;
+		current_idx = 0;
 	}
 };
 
@@ -192,53 +173,52 @@ void MINIMUMCUTPHASE(CDSI_instance& instance, graph& G, vector<int>& edge_MC, do
 
 int c_brance(CDSI_instance& instance, int t, vector<node_EST>& tree);
 
-void branch(CDSI_instance& instance, list<node>& tree, int& node_count);
+void branch(CDSI_instance& instance, list<node>& tree, vector<pair<int, double>>& global_candidate_list, int& node_count);
 //return true if tee candidate set of current node is feasibl
-char ContainEST(CDSI_instance& instance, node& tq, vector<EST>& estlist, clock_t start,double);
-bool isconnectCon(CDSI_instance& instance, vector<int>& he);
-bool find_EST_nb(vector<EST>& estlist, vector<int>& nb, int eq);
-bool find_EST_CBB(CDSI_instance& instance, vector<int>& Splusq, vector<int>&, int eq, clock_t start,double);
+char ContainEST(CDSI_instance& instance, node& tq, vector<EST>& estlist, vector<pair<int, double>>& global_candidate_list, clock_t start, double);
+bool isconnectCon(CDSI_instance& instance, vector<char>& he);
+bool find_EST_nb(vector<EST>& estlist, vector<char>& nb, int eq);
+bool find_EST_CBB(CDSI_instance& instance, vector<int>& Splusq, vector<int>&, int eq, clock_t start, double);
 bool check_EST(CDSI_instance& instance, vector<int>& edges, vector<vector<char>>&);
-
-double lower_bound(CDSI_instance& instance, node q, vector<EST>& estlist, clock_t start);
-int find_EST_union(vector<EST>& estlist, vector<int>& he, int start);
+double lower_bound(CDSI_instance& instance, node& q, vector<EST>& estlist, vector<pair<int, double>>& global_candidate_list, double, clock_t start);
+int find_EST_union(vector<EST>& estlist, vector<char>& he, int start);
 int insert_EST(CDSI_instance& instance, vector<EST>& estlist, vector<int>& ste);
-bool isconnectLB(CDSI_instance& instance, vector<int>& he, int nhe);
-vector<int> find_ST(CDSI_instance& instance, vector<int>& he, vector<int>& heud);
+bool isconnectLB(CDSI_instance& instance, vector<char>& he, int nhe);
+vector<int> find_ST(CDSI_instance& instance, vector<char>& he, vector<int>& heud);
 bool check_STW(CDSI_instance& instance, vector<int>& STE);
 
 double LB_unprocessed_nodes(CDSI_instance& instance, list<node>& tree);
 
 int main()
 {
-	ofstream fout;
-	fout.open("CDSI_CBB_v2.csv");
-	fout << "File Name,|V|,density,Eta,number_of_EST,number_of_cycle,Time Limit (s),Run Time (s),Gap,Best Sol,mincut,Alternative solution, Best Bound, Nodes #,processed_node,fathomed by bound,fathomed by infeasibility, fathomed by feasibility,update solution" << endl;
-	fout.close();
+	try {
+		ofstream fout;
+		fout.open("CDSI_CBB.csv");
+		fout << "File Name,|V|,density,Eta,number_of_EST,number_of_cycle,Time Limit (s),root gap, root LB,Run Time (s),Gap,Best Sol,mincut,Alternative solution, Best Bound,Nodes #,processed_node,fathomed by bound,fathomed by infeasibility, fathomed by feasibility,update solution" << endl;
+		fout.close();
 
-	ifstream fin;
-	fin.open("filename-real.txt");
-	string str3;
-	int number_of_files;
-	fin >> number_of_files;
-	//finish reading the current line
-	getline(fin, str3);
-	for (int i = 0; i < number_of_files; i++)
-	{
+		ifstream fin;
+		fin.open("filename.txt");
+		string str3;
+		int number_of_files;
+		fin >> number_of_files;
+		//finise reading tee current line
 		getline(fin, str3);
-		runmodel(str3);
+		for (int i = 0; i < number_of_files; i++)
+		{
+			getline(fin, str3);
+			runmodel(str3);
+		}
+		return 0;
 	}
-	fin.close();
-	fin.open("filename-random.txt");
-	fin >> number_of_files;
-	//finish reading the current line
-	getline(fin, str3);
-	for (int i = 0; i < number_of_files; i++)
-	{
-		getline(fin, str3);
-		runmodel(str3);
+	catch (const std::bad_alloc& e) {
+		std::cerr << "bad_alloc: " << e.what() << std::endl;
+		return 1;
 	}
-	return 0;
+	catch (const std::exception& e) {
+		std::cerr << "exception: " << e.what() << std::endl;
+		return 2;
+	}
 }
 
 void runmodel(string filename)
@@ -249,29 +229,36 @@ void runmodel(string filename)
 
 	cout << filename << " start" << endl;
 	clock_t pre_process_start = clock();
+	vector<pair<int, double>> global_candidate_list(instance.one_d.size());
+
+	for (int i = 0; i < instance.one_d.size(); i++) {
+		global_candidate_list[i] = { i, instance.one_d[i].blocking_cost };
+	}
+	d_sort_ratio(global_candidate_list);
+
 	list<node> tree;
 	tree.push_back(node(instance));
 
 	vector<EST> EST_list;
-	vector<int> incumbent_solution;
+	vector<char> incumbent_solution;
 	vector<int> UB_solution;
 	double mincut = MINIMUMCUT(instance, UB_solution);
 	double incumbent_cost = mincut;
-	vector<int> min_cut_S;
-	min_cut_S.resize(instance.one_d.size(), 1);
+	vector<char> min_cut_S;
+	min_cut_S.resize(instance.one_d.size(), '1');
 	for (int i = 0; i < UB_solution.size(); i++)
 	{
-		min_cut_S[i] = 0;
+		min_cut_S[i] = '0';
 	}
-	clock_t now = clock();
+	double rootLB = lower_bound(instance, tree.front(), EST_list, global_candidate_list, incumbent_cost, pre_process_start);
+
 
 	int node_count = 1;//the root node
 	int fathomed_by_bound = 0;
 	int fathomed_by_infeasibility = 0;
 	int fathomed_by_feasibility = 0;
 	int update_solution = 0;
-	//current_node = branch(instance, current_node, tree, node_count);
-	int processed_node = 1;
+	int processed_node = 0;
 	int aos = 0;
 	double rest_LB = 0;
 	bool solved = true;
@@ -293,7 +280,7 @@ void runmodel(string filename)
 
 		if (!tree.front().b)
 		{//associated wite not blocking
-			infeasibility = ContainEST(instance, tree.front(), EST_list, pre_process_start,total_time_limit);
+			infeasibility = ContainEST(instance, tree.front(), EST_list, global_candidate_list, pre_process_start, total_time_limit);
 			if (infeasibility == 'L')
 			{//time limit
 				cout << filename << ' ' << static_cast<double>(now - pre_process_start) / CLOCKS_PER_SEC << "s, TL, start to calculate gap." << endl;
@@ -305,7 +292,7 @@ void runmodel(string filename)
 		}
 		if (infeasibility == 'N')
 		{//contain EST
-			if (tree.front().candidate.size() == 0)
+			if (tree.front().current_idx == global_candidate_list.size())
 			{//fateom by feasibility
 				fathomed_by_feasibility++;
 				if (tree.front().solution_cost == incumbent_cost)
@@ -334,14 +321,14 @@ void runmodel(string filename)
 			}
 			else
 			{
-				double newLB = lower_bound(instance, tree.front(), EST_list, pre_process_start);
+				double newLB = lower_bound(instance, tree.front(), EST_list, global_candidate_list, incumbent_cost, pre_process_start);
 				if (newLB > tree.front().LB)
 				{
 					tree.front().LB = newLB;
 				}
 				if (tree.front().LB < incumbent_cost)
 				{
-					branch(instance, tree, node_count);
+					branch(instance, tree, global_candidate_list, node_count);
 				}
 				else//fateom by bound
 				{
@@ -360,12 +347,14 @@ void runmodel(string filename)
 	clock_t end = clock();
 	cout << filename << " end" << endl;
 	ofstream fout;
-	fout.open("CDSI_CBB_v2.csv", std::ios_base::app);
+	fout.open("CDSI_CBB_v5.csv", std::ios_base::app);
 	fout << filename << ',' << instance.vw.size();
 	fout << ',' << static_cast<double>(instance.one_d.size()) / static_cast<double>((instance.vw.size() * (instance.vw.size() - 1)) / 2);
 	fout << ',' << instance.desired_ST_weiget;
 	fout << ',' << EST_list.size() << ",0";
 	fout << ',' << total_time_limit << ",";
+	fout << static_cast<double> (mincut - rootLB) / (mincut) << ',';
+	fout << rootLB << ',';
 
 	if (solved)
 	{
@@ -410,7 +399,6 @@ void runmodel(string filename)
 			fout << instance.one_d[UB_solution[i]].tail + 1 << ')';
 		}
 	}
-	fout << ',' << static_cast<double>(end - pre_process_start) / CLOCKS_PER_SEC;
 	fout << endl;
 	fout.close();
 }
@@ -583,22 +571,23 @@ void readdata(CDSI_instance& instance, string filename)
 	}
 }
 
-void branch(CDSI_instance& instance, list<node>& tree, int& node_count)
+void branch(CDSI_instance& instance, list<node>& tree, vector<pair<int, double>>& global_candidate_list, int& node_count)
 {//return position of tree node
-	int e = tree.front().candidate.back();
-	tree.front().candidate.pop_back();
-	tree.front().e = e;
+	int e = global_candidate_list[tree.front().current_idx].first;
+	tree.front().current_idx++;
 	//create tq associated wite not blocking e
-	node tqnode = tree.front();
+	node parent = std::move(tree.front());
+	tree.pop_front();
+
+	node tqnode = parent;              // ֻ����һ��
 	tqnode.Splusq.push_back(e);
-	tqnode.status[e] = 1;
+	tqnode.status[e] = '1';
 	tqnode.b = false;
 	//create tp associated with blocking e
-	node tpnode = tree.front();
+	node tpnode = std::move(parent);
 	tpnode.solution_cost += instance.one_d[e].blocking_cost;
-	tpnode.status[e] = 0;
+	tpnode.status[e] = '0';
 	tpnode.b = true;
-	tree.pop_front();
 	node_count += 2;//block and not block
 	for (auto it = tree.begin(); it != tree.end(); it++)
 	{
@@ -613,7 +602,7 @@ void branch(CDSI_instance& instance, list<node>& tree, int& node_count)
 	tree.push_back(tpnode);
 }
 
-char ContainEST(CDSI_instance& instance, node& tq, vector<EST>& estlist, clock_t start,double ttl)
+char ContainEST(CDSI_instance& instance, node& tq, vector<EST>& estlist, vector<pair<int, double>>& global_candidate_list, clock_t start, double ttl)
 {//return L if reach time limit, C if S+q contain est, N if does not contain
 	if (tq.Splusq.size() < instance.vw.size() - 1)
 	{
@@ -627,13 +616,13 @@ char ContainEST(CDSI_instance& instance, node& tq, vector<EST>& estlist, clock_t
 	{
 		return 'C';
 	}
-	if (find_EST_nb(estlist, tq.status, tq.e))
+	if (find_EST_nb(estlist, tq.status, global_candidate_list[tq.current_idx - 1].first))
 	{
 		return 'C';
 	}
 
 	vector<int> e;
-	bool TL = find_EST_CBB(instance, tq.Splusq, e, tq.e, start,ttl);
+	bool TL = find_EST_CBB(instance, tq.Splusq, e, global_candidate_list[tq.current_idx - 1].first, start, ttl);
 	if (TL)
 	{//time limit reach
 		return 'L';
@@ -648,7 +637,7 @@ char ContainEST(CDSI_instance& instance, node& tq, vector<EST>& estlist, clock_t
 		return 'C';
 	}
 }
-bool isconnectCon(CDSI_instance& instance, vector<int>& he)
+bool isconnectCon(CDSI_instance& instance, vector<char>& he)
 {//return true if connected
 	vector<char> visitedV;//bool vector
 	visitedV.resize(instance.vw.size(), 'F');
@@ -665,7 +654,7 @@ bool isconnectCon(CDSI_instance& instance, vector<int>& he)
 			countv++;
 			for (int i = 0; i < instance.neigebor[cv].size(); i++)
 			{
-				if (visitedV[instance.neigebor[cv][i]] == 'F' && he[instance.two_d[cv][instance.neigebor[cv][i]]] == 1)
+				if (visitedV[instance.neigebor[cv][i]] == 'F' && he[instance.two_d[cv][instance.neigebor[cv][i]]] == '1')
 				{
 					unvisitedV.push(instance.neigebor[cv][i]);
 				}
@@ -681,7 +670,7 @@ bool isconnectCon(CDSI_instance& instance, vector<int>& he)
 		return false;
 	}
 }
-bool find_EST_nb(vector<EST>& estlist, vector<int>& nb, int eq)
+bool find_EST_nb(vector<EST>& estlist, vector<char>& nb, int eq)
 {//check if there exist EST in S+q containing eq, return true if find EST
 	for (int i = 0; i < estlist.size(); i++)
 	{
@@ -690,7 +679,7 @@ bool find_EST_nb(vector<EST>& estlist, vector<int>& nb, int eq)
 			bool contain = true;
 			for (int j = 0; j < estlist[i].EST1.size(); j++)
 			{
-				if (nb[estlist[i].EST1[j]] != 1)
+				if (nb[estlist[i].EST1[j]] != '1')
 				{
 					contain = false;
 					break;
@@ -704,7 +693,7 @@ bool find_EST_nb(vector<EST>& estlist, vector<int>& nb, int eq)
 	}
 	return false;
 }
-bool find_EST_CBB(CDSI_instance& instance, vector<int>& Splusq, vector<int>& solution, int eq, clock_t start,double ttl)
+bool find_EST_CBB(CDSI_instance& instance, vector<int>& Splusq, vector<int>& solution, int eq, clock_t start, double ttl)
 {//return true if reach time limit
 	vector<node_EST> tree;
 	//initialize the root node
@@ -850,25 +839,31 @@ bool check_EST(CDSI_instance& instance, vector<int>& edges, vector<vector<char>>
 	}
 }
 
-double lower_bound(CDSI_instance& instance, node q, vector<EST>& estlist, clock_t start)
+double lower_bound(CDSI_instance& instance, node& q, vector<EST>& estlist, vector<pair<int, double>>& global_candidate_list, double incumbent_s, clock_t start)
 {
-	vector<int> he = q.status;//1 if edge in H S+, 2 if in H Uq,format of oned
+	if (q.solution_cost >= incumbent_s) {
+		return q.solution_cost;
+	}
+	vector<char> he = q.status;//1 if edge in H S+, 2 if in H Uq,format of oned
 	double c_t = 0;
-	vector<int> heud = q.candidate;//id of edge in H that is in undecided set
-	int nhe = q.Splusq.size() + q.candidate.size();//number of edges in H
+	vector<int> heud;
+	for (int i = q.current_idx; i < global_candidate_list.size(); i++) {
+		heud.push_back(global_candidate_list[i].first);
+	}//id of edge in H that is in undecided set
+	int nhe = q.Splusq.size() + heud.size();//number of edges in H
 
 	int ESTid = find_EST_union(estlist, he, 0);
 	while (ESTid < estlist.size())
 	{
 		bool egceud = false;
-		if (he[estlist[ESTid].me] == 2)
+		if (he[estlist[ESTid].me] == '2')
 		{//is in Ud
 			c_t += estlist[ESTid].cost;
 			for (int i = 0; i < heud.size(); i++)
 			{
 				if (estlist[ESTid].EST2[heud[i]])
 				{//edge in EST and edge is in ud
-					he[heud[i]] = 0;//remove from H
+					he[heud[i]] = '0';//remove from H
 					nhe--;
 					heud[i] = heud.back();
 					heud.pop_back();
@@ -883,7 +878,7 @@ double lower_bound(CDSI_instance& instance, node q, vector<EST>& estlist, clock_
 			{
 				if (estlist[ESTid].EST2[heud[i]])
 				{//edge in EST and edge is in ud
-					he[heud[i]] = 0;//remove from H
+					he[heud[i]] = '0';//remove from H
 					nhe--;
 					if (instance.one_d[heud[i]].blocking_cost < c_min)
 					{
@@ -905,14 +900,14 @@ double lower_bound(CDSI_instance& instance, node q, vector<EST>& estlist, clock_
 		if (check_STW(instance, STE))
 		{
 			int estpos = insert_EST(instance, estlist, STE);
-			if (q.status[estlist[estpos].me] == 2)
+			if (q.status[estlist[estpos].me] == '2')
 			{//is Ud
 				c_t += estlist[estpos].cost;
 				for (int i = 0; i < heud.size(); i++)
 				{
 					if (estlist[estpos].EST2[heud[i]])
 					{//edge in EST and edge is in ud
-						he[heud[i]] = 0;//remove from H
+						he[heud[i]] = '0';//remove from H
 						nhe--;
 						heud[i] = heud.back();
 						heud.pop_back();
@@ -927,7 +922,7 @@ double lower_bound(CDSI_instance& instance, node q, vector<EST>& estlist, clock_
 				{
 					if (estlist[estpos].EST2[heud[i]])
 					{//edge in EST and edge is in ud
-						he[heud[i]] = 0;//remove from H
+						he[heud[i]] = '0';//remove from H
 						nhe--;
 						if (instance.one_d[heud[i]].blocking_cost < c_min)
 						{
@@ -945,9 +940,9 @@ double lower_bound(CDSI_instance& instance, node q, vector<EST>& estlist, clock_
 		{
 			for (int i = 0; i < STE.size(); i++)
 			{
-				if (he[STE[i]] == 2)
+				if (he[STE[i]] == '2')
 				{//edge in EST and edge is in ud
-					he[STE[i]] = 0;//remove from H
+					he[STE[i]] = '0';//remove from H
 					nhe--;
 					int ii;
 					for (int j = 0; j < heud.size(); j++)
@@ -966,14 +961,14 @@ double lower_bound(CDSI_instance& instance, node q, vector<EST>& estlist, clock_
 	}
 	return c_t + q.solution_cost;
 }
-int find_EST_union(vector<EST>& estlist, vector<int>& he, int start)
+int find_EST_union(vector<EST>& estlist, vector<char>& he, int start)
 {//check if there exist EST in given edges, from start in the list
 	for (int i = start; i < estlist.size(); i++)
 	{
 		bool contain = true;
 		for (int j = 0; j < estlist[i].EST1.size(); j++)
 		{
-			if (he[estlist[i].EST1[j]] == 0)
+			if (he[estlist[i].EST1[j]] == '0')
 			{//element in EST is not contained
 				contain = false;
 				break;
@@ -986,7 +981,7 @@ int find_EST_union(vector<EST>& estlist, vector<int>& he, int start)
 	}
 	return estlist.size();
 }
-bool isconnectLB(CDSI_instance& instance, vector<int>& he, int nhe)
+bool isconnectLB(CDSI_instance& instance, vector<char>& he, int nhe)
 {//return true if connected
 	if (nhe < instance.vw.size() - 1)
 	{
@@ -1007,7 +1002,7 @@ bool isconnectLB(CDSI_instance& instance, vector<int>& he, int nhe)
 			countv++;
 			for (int i = 0; i < instance.neigebor[cv].size(); i++)
 			{
-				if (visitedV[instance.neigebor[cv][i]] == 'F' && he[instance.two_d[cv][instance.neigebor[cv][i]]] > 0)
+				if (visitedV[instance.neigebor[cv][i]] == 'F' && he[instance.two_d[cv][instance.neigebor[cv][i]]] != '0')
 				{
 					unvisitedV.push(instance.neigebor[cv][i]);
 				}
@@ -1023,7 +1018,7 @@ bool isconnectLB(CDSI_instance& instance, vector<int>& he, int nhe)
 		return false;
 	}
 }
-vector<int> find_ST(CDSI_instance& instance, vector<int>& he, vector<int>& heud)
+vector<int> find_ST(CDSI_instance& instance, vector<char>& he, vector<int>& heud)
 {
 	vector<int> STE, STV;//edges of spanning tree,vertices of spanning tree
 	vector<char> visitedV(instance.vw.size(), 'F');//'v' for visited, 'n' for in neighbor,'F' for else
@@ -1035,58 +1030,58 @@ vector<int> find_ST(CDSI_instance& instance, vector<int>& he, vector<int>& heud)
 		return instance.one_d[a].blocking_cost < instance.one_d[b].blocking_cost;
 		}) - heud.begin();
 
-		STE.push_back(heud[me]);//heud me is the edge with maximum cost
-		int h = instance.one_d[heud[me]].head;
-		int t = instance.one_d[heud[me]].tail;
-		visitedV[h] = 'v';
-		visitedV[t] = 'v';
-		auto mark_visited = [&](int v) {
-			STV.push_back(v);
-			degree[v] = 1;
-			for (int n : instance.neigebor[v]) {
-				if (he[instance.two_d[v][n]] > 0 && visitedV[n] == 'F') {
-					neighbor.push_back(n);
-					visitedV[n] = 'n';
-				}
-			}
-		};
-		mark_visited(h);
-		mark_visited(t);
-		while (STV.size() != instance.vw.size())
-		{
-			// Find the vertex with the minimum weight in the neighbors
-			auto min_it = min_element(neighbor.begin(), neighbor.end(), [&](int a, int b) {
-				return instance.vw[a] < instance.vw[b];
-				});
-			int cv = *min_it;
-			neighbor.erase(min_it);
-			visitedV[cv] = 'v';
-
-			for (int n : instance.neigebor[cv]) {
-				if (visitedV[n] == 'F' && he[instance.two_d[cv][n]] > 0) {
-					neighbor.push_back(n);
-					visitedV[n] = 'n';
-				}
-			}
-
-			// Find the vertex in STV with the highest degree that is connected to cv
-			int ci = -1, max_degree = 0;
-			for (int v : STV) {
-				if (instance.two_d[cv][v] != -1 && he[instance.two_d[cv][v]] > 0) {
-					if (degree[v] > max_degree) {
-						ci = v;
-						max_degree = degree[v];
-					}
-				}
-			}
-			if (ci != -1) {
-				STV.push_back(cv);
-				STE.push_back(instance.two_d[cv][ci]);
-				degree[cv]++;
-				degree[ci]++;
+	STE.push_back(heud[me]);//heud me is the edge with maximum cost
+	int h = instance.one_d[heud[me]].head;
+	int t = instance.one_d[heud[me]].tail;
+	visitedV[h] = 'v';
+	visitedV[t] = 'v';
+	auto mark_visited = [&](int v) {
+		STV.push_back(v);
+		degree[v] = 1;
+		for (int n : instance.neigebor[v]) {
+			if (he[instance.two_d[v][n]] != '0' && visitedV[n] == 'F') {
+				neighbor.push_back(n);
+				visitedV[n] = 'n';
 			}
 		}
-		return STE;
+		};
+	mark_visited(h);
+	mark_visited(t);
+	while (STV.size() != instance.vw.size())
+	{
+		// Find the vertex with the minimum weight in the neighbors
+		auto min_it = min_element(neighbor.begin(), neighbor.end(), [&](int a, int b) {
+			return instance.vw[a] < instance.vw[b];
+			});
+		int cv = *min_it;
+		neighbor.erase(min_it);
+		visitedV[cv] = 'v';
+
+		for (int n : instance.neigebor[cv]) {
+			if (visitedV[n] == 'F' && he[instance.two_d[cv][n]] != '0') {
+				neighbor.push_back(n);
+				visitedV[n] = 'n';
+			}
+		}
+
+		// Find the vertex in STV with the highest degree that is connected to cv
+		int ci = -1, max_degree = 0;
+		for (int v : STV) {
+			if (instance.two_d[cv][v] != -1 && he[instance.two_d[cv][v]] != '0') {
+				if (degree[v] > max_degree) {
+					ci = v;
+					max_degree = degree[v];
+				}
+			}
+		}
+		if (ci != -1) {
+			STV.push_back(cv);
+			STE.push_back(instance.two_d[cv][ci]);
+			degree[cv]++;
+			degree[ci]++;
+		}
+	}
+	return STE;
 }
 bool check_STW(CDSI_instance& instance, vector<int>& STE)
 {//return true if the weight of spanning tree is less than eta
