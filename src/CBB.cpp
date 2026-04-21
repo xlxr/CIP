@@ -347,7 +347,7 @@ void runmodel(string filename)
 	clock_t end = clock();
 	cout << filename << " end" << endl;
 	ofstream fout;
-	fout.open("CDSI_CBB_v5.csv", std::ios_base::app);
+	fout.open("CDSI_CBB.csv", std::ios_base::app);
 	fout << filename << ',' << instance.vw.size();
 	fout << ',' << static_cast<double>(instance.one_d.size()) / static_cast<double>((instance.vw.size() * (instance.vw.size() - 1)) / 2);
 	fout << ',' << instance.desired_ST_weiget;
