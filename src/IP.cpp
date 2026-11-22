@@ -408,28 +408,6 @@ int main()
 	fout.close();
 
 	ifstream fin;
-	fin.open("filename-real.txt");
-	string str3;
-	int number_of_files;
-	fin >> number_of_files;
-	//finish reading the current line
-	getline(fin, str3);
-	for (int i = 0; i < number_of_files; i++)
-	{
-		getline(fin, str3);
-		runmodel(str3);
-	}
-	fin.close();
-	fin.open("filename-random.txt");
-	fin >> number_of_files;
-	//finish reading the current line
-	getline(fin, str3);
-	for (int i = 0; i < number_of_files; i++)
-	{
-		getline(fin, str3);
-		runmodel(str3);
-	}
-
 	fin.open("filename.txt");
 	fin >> number_of_files;
 	//finish reading the current line
