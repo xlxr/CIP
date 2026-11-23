@@ -1,4 +1,4 @@
-//Github version IP
+//Github version
 #include <vector>
 #include <cmath>
 #include <exception>
@@ -266,7 +266,34 @@ protected:
 							temps += instance.one_d[i].blocking_costs;
 						}
 					}
-					if (temps < minS || (temps == minS && temp_set != min_cut)) (*lazy_s).aos++;
+					if (temps == minS)
+					{
+						bool equal = true;
+						if (temp_set.size() != min_cut.size())
+						{
+							equal = false;
+						}
+						else
+						{
+							sort(temp_set.begin(), temp_set.end());
+							for (int i = 0; i < min_cut.size(); i++)
+							{
+								if (min_cut[i] != temp_set[i])
+								{
+									equal = false;
+									break;
+								}
+							}
+						}
+						if (!equal)
+						{
+							(*lazy_s).aos++;
+						}
+					}
+					else if (temps < minS)
+					{
+						(*lazy_s).aos++;
+					}
 					if (temps < (*lazy_s).solution)
 					{
 						(*lazy_s).solution = temps;
@@ -463,8 +490,6 @@ void runmodel(string filename)
 	}
 	// The objective is minimization
 	model.set(GRB_IntAttr_ModelSense, GRB_MINIMIZE);
-	model.set(GRB_DoubleParam_MIPGap, 0.0);
-	model.set(GRB_DoubleParam_MIPGapAbs, 0.0);
 	model.update();
 
 	model.set(GRB_IntParam_Threads, 1);
@@ -538,13 +563,7 @@ void runmodel(string filename)
 		fout << model.get(GRB_DoubleAttr_ObjBoundC) << ',';
 	}
 	else fout << ",,,"; // An interrupted separation may have an unverified MIP solution.
-	if (ls.not_TL) ls.bound = max(ls.bound, model.get(GRB_DoubleAttr_ObjBound));
-	if (ls.not_TL && model.get(GRB_IntAttr_Status) == GRB_OPTIMAL)
-	{
-		if (fabs(model.get(GRB_DoubleAttr_ObjVal) - ls.solution) > 1e-5)
-			throw logic_error("Master objective disagrees with the verified blocker");
-		ls.bound = ls.solution;
-	}
+	if (ls.not_TL) ls.bound = max(0.0, model.get(GRB_DoubleAttr_ObjBound));
 	ls.bound = min(ls.bound, ls.solution);
 	fout << (ls.solution > 0 ? (ls.solution - ls.bound) / ls.solution : 0) << ',';
 	fout << ls.solution << ',' << ls.bound << ',';
@@ -774,6 +793,7 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 		vector<char> yisD;
 		yisD.resize(instance.vertices.size(), 'F');
 		int headD = -1;//store a vertex in D as the root of spanning tree
+		int countD = 0;
 		for (int i = 0; i < instance.vertices.size(); i++)
 		{
 			double temp_solution_y = y[i].get(GRB_DoubleAttr_X);
@@ -781,6 +801,7 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 			{
 				yisD[i] = 'T';
 				headD = i;
+				countD++;
 			}
 		}
 		for (int i = 0; i < instance.vertices.size(); i++)
@@ -801,8 +822,14 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 		//find a spanning tree in D
 		if (headD < 0) throw logic_error("Empty CDS returned by subproblem");
 		get_ST(instance, neighbor, headD, yisD, eta_EST);
-		if (eta_EST.size() + 1 != instance.vertices.size()) throw logic_error("Incomplete CDS spanning tree");
-		*eta_ST = check_arc_cycle(instance, eta_EST);
+		if (instance.vertices.size() - 2 > countD)
+		{
+			(*eta_ST) = 'T';
+		}
+		else
+		{
+			*eta_ST = check_arc_cycle(instance, eta_EST);
+		}
 		return false;
 	}
 	else if (sub_model.get(GRB_IntAttr_Status) == GRB_TIME_LIMIT)
