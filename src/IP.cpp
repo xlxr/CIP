@@ -1,11 +1,5 @@
 //Github version
-#include <vector>
-#include <cmath>
-#include <exception>
-#include <iostream>
-#include <limits>
-#include <memory>
-#include <stdexcept>
+#include <vector>/
 using namespace std;
 #include <list>
 //To be able to use list
@@ -127,12 +121,11 @@ public:
 	double total_time_limit;
 	clock_t start;
 	int number_of_lazy;
-	int gurobi_lazy = 0;
-	vector<int> solution_edges; // Best verified feasible blocker, including the min-cut start.
+	int gurobi_lazy;
 	bool take_start;
 	int aos = 0;//alternative optimal solution other than min-cut
-	double root_ub = 0;
-	double root_lb = 0;
+	double root_ub;
+	double root_lb;
 
 	lazy_status(double tt, clock_t st)
 	{
@@ -158,18 +151,17 @@ public:
 	}
 };
 
-bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& instance, char* eta_ST, clock_t start, double total_time_limit, string);
+bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& instance, char* eta_ST, clock_t start, clock_t total_time_limit, string);\
 bool is_graph_connected(const vector<vector<int>>& neighbor);
 int check_connectivity(vector<vector<int>>& neighbor, vector<char>& selected_vertices2, vector<int>& selected_vertices1);
 vector<int> make_minimal_vertex_cut(vector<vector<int>>& neighbor, const vector<int>& C1, vector<char>& C2);
 int get_ST(CDSI_instance& instance, vector<vector<int>>& neighbor, int D, vector<char>& D2, vector<int>& STE);
-int check_full_cycle(CDSI_instance& instance, const vector<int>& EST);
-char check_arc_cycle(CDSI_instance& instance, vector<int>& EST);
+bool check_full_cycle(CDSI_instance& instance, vector<int>& remain_edges, vector<char>& D2, int D_size, int headD, int tailD, vector<int> EST);
+char check_arc_cycle(CDSI_instance& instance, vector<int>& remain_edges, vector<char>& D2, int D_size, int headD, int tailD, vector<int> EST);
 
 class mycallback : public GRBCallback
 {
 public:
-	exception_ptr failure;
 	int numx;//number of variable x
 	GRBVar* varsx;
 	CDSI_instance instance;
@@ -196,13 +188,12 @@ public:
 protected:
 	void callback() {
 		try {
-			if (failure || !(*lazy_s).not_TL) { abort(); return; }
 			if (where == GRB_CB_MIPSOL) {
 				// MIP solution callback
 				if ((*lazy_s).not_TL) {
-					(*lazy_s).bound = max((*lazy_s).bound, getDoubleInfo(GRB_CB_MIPSOL_OBJBND));
+					(*lazy_s).bound = getDoubleInfo(GRB_CB_MIPSOL_OBJBND);
 				}
-				unique_ptr<double[]> x(getSolution(varsx, numx));
+				double* x = getSolution(varsx, numx);
 				vector<int> remain_edges;
 				int edge_size = 0;
 				remain_edges.resize(instance.one_d.size(), 0);
@@ -230,7 +221,7 @@ protected:
 				}
 				else if (eta_est.size() > 0)
 				{
-					GRBLinExpr lhs = 0;
+					GRBLinExpr lhs = NULL;
 					for (int i = 0; i < eta_est.size(); i++)
 					{
 						lhs += varsx[eta_est[i]];
@@ -256,19 +247,19 @@ protected:
 				}
 				else
 				{
-					vector<int> temp_set;
-					double temps = 0;
-					for (int i = 0; i < numx; i++)
-					{
-						if (x[i] > 0.5)
-						{
-							temp_set.push_back(i);
-							temps += instance.one_d[i].blocking_costs;
-						}
-					}
-					if (temps == minS)
+					(*lazy_s).solution = getDoubleInfo(GRB_CB_MIPSOL_OBJ);
+					int temps = getDoubleInfo(GRB_CB_MIPSOL_OBJ);
+					if (temps == static_cast<int>(minS))
 					{
 						bool equal = true;
+						vector<int> temp_set;
+						for (int i = 0; i < numx; i++)
+						{
+							if (x[i] > 0.5)
+							{//not block
+								temp_set.push_back(i);
+							}
+						}
 						if (temp_set.size() != min_cut.size())
 						{
 							equal = false;
@@ -290,26 +281,20 @@ protected:
 							(*lazy_s).aos++;
 						}
 					}
-					else if (temps < minS)
+					else if (temps < static_cast<int>(minS))
 					{
 						(*lazy_s).aos++;
 					}
-					if (temps < (*lazy_s).solution)
-					{
-						(*lazy_s).solution = temps;
-						(*lazy_s).solution_edges = temp_set;
-					}
-					if (getDoubleInfo(GRB_CB_MIPSOL_NODCNT) == 0)
-						(*lazy_s).root_ub = (*lazy_s).solution;
 				}
+				delete[] x;
 			}
 			else if (where == GRB_CB_MIP) {
 				// MIP callback
 				if ((*lazy_s).not_TL) {
-					(*lazy_s).bound = max((*lazy_s).bound, getDoubleInfo(GRB_CB_MIP_OBJBND));
+					(*lazy_s).bound = getDoubleInfo(GRB_CB_MIP_OBJBND);
 					if (getDoubleInfo(GRB_CB_MIP_NODCNT) == 0) {
-						(*lazy_s).root_lb = (*lazy_s).bound;
-						(*lazy_s).root_ub = (*lazy_s).solution;
+						(*lazy_s).root_lb = getDoubleInfo(GRB_CB_MIP_OBJBND);
+						(*lazy_s).root_ub = getDoubleInfo(GRB_CB_MIP_OBJBST);
 					}
 				}
 			}
@@ -333,8 +318,6 @@ protected:
 			}
 		}
 		catch (GRBException e) {
-			failure = current_exception();
-			abort();
 			ofstream fout;
 			fout.open(filename, std::ios_base::app);
 			fout << "Error number: " << e.getErrorCode() << endl;
@@ -342,8 +325,6 @@ protected:
 			fout.close();
 		}
 		catch (...) {
-			failure = current_exception();
-			abort();
 			ofstream fout;
 			fout.open(filename, std::ios_base::app);
 			fout << "Error during callback" << endl;
@@ -355,7 +336,6 @@ protected:
 class mycallback2 : public GRBCallback
 {
 public:
-	exception_ptr failure;
 	int numx;//number of variable x
 	GRBVar* varsx;
 	vector < vector<int>> neighbor;
@@ -371,7 +351,7 @@ protected:
 	void callback() {
 		try {
 			if (where == GRB_CB_MIPSOL) {
-				unique_ptr<double[]> x(getSolution(varsx, numx));
+				double* x = getSolution(varsx, numx);
 				vector<char> selected_vertices2(numx,'F');
 				vector<int> selected_vertices1;
 				for (int i = 0; i < numx; i++)
@@ -393,24 +373,21 @@ protected:
 						}
 					}
 					vector<int> minimal_vc = make_minimal_vertex_cut(neighbor, C1, C2);
-					GRBLinExpr lhs = 0;
+					GRBLinExpr lhs = NULL;
 					for (int i = 0; i < minimal_vc.size(); i++)
 					{
 						lhs += varsx[minimal_vc[i]];
 					}
 					addLazy(lhs >= 1);
 				}
+				delete[] x;
 			}
 		}
 		catch (GRBException e) {
-			failure = current_exception();
-			abort();
 			cout << "Error number: " << e.getErrorCode() << endl;
 			cout << e.getMessage() << endl;
 		}
 		catch (...) {
-			failure = current_exception();
-			abort();
 			cout << "Error during callback" << endl;
 		}
 	}
@@ -424,40 +401,47 @@ void runmodel(string);
 double MINIMUMCUT(CDSI_instance& instance, vector<int>& edge_MC);
 void MINIMUMCUTPHASE(CDSI_instance& instance, graph& G, vector<int>& edge_MC, double& MC, int a);
 
-int main() try
+int main()
 {
 	ofstream fout;
-	fout.open("IP.csv");
+	fout.open("review3_austin.csv");
 	fout << "File Name,|V|,density,Eta,number_of_lazy,gurobi_#lazy,#tree,#arc,#cycle,Time Limit (s),Run Time (s),Gurobi gap,Gurobi ub,Gurobi lb,manual gap, manual ub, manual lb,root gap,root ub,root lb,take_start, Nodes #,min_cut,mincut not optimal, alternative solution,Sols" << endl;
 	fout.close();
 
-	bool found_list = false;
-	for (const char* listname : { "filename.txt" })
+	ifstream fin;
+	fin.open("filename-real.txt");
+	string str3;
+	int number_of_files;
+	fin >> number_of_files;
+	//finish reading the current line
+	getline(fin, str3);
+	for (int i = 0; i < number_of_files; i++)
 	{
-		ifstream fin(listname);
-		if (!fin) continue;
-		found_list = true;
-		int number_of_files;
-		string str3;
-		if (!(fin >> number_of_files) || number_of_files < 0) throw runtime_error(string("Invalid list ") + listname);
 		getline(fin, str3);
-		for (int i = 0; i < number_of_files; i++)
-		{
-			if (!getline(fin, str3)) throw runtime_error(string("Incomplete list ") + listname);
-			if (!str3.empty() && str3.back() == '\r') str3.pop_back();
-			runmodel(str3);
-		}
+		runmodel(str3);
 	}
-	if (!found_list) throw runtime_error("Cannot open an instance list");
+	fin.close();
+	fin.open("filename-random.txt");
+	fin >> number_of_files;
+	//finish reading the current line
+	getline(fin, str3);
+	for (int i = 0; i < number_of_files; i++)
+	{
+		getline(fin, str3);
+		runmodel(str3);
+	}
+
+	fin.open("filename.txt");
+	fin >> number_of_files;
+	//finish reading the current line
+	getline(fin, str3);
+	for (int i = 0; i < number_of_files; i++)
+	{
+		getline(fin, str3);
+		runmodel(str3);
+	}
+	fin.close();
 	return 0;
-}
-catch (const GRBException& e) {
-	cerr << e.getMessage() << endl;
-	return 1;
-}
-catch (const exception& e) {
-	cerr << e.what() << endl;
-	return 1;
 }
 
 void runmodel(string filename)
@@ -473,17 +457,18 @@ void runmodel(string filename)
 	clock_t pre_process_start = clock();
 
 	//Defining Gurobi environment
-	GRBEnv env;
+	GRBEnv* env = 0;
+	env = new GRBEnv();
 
 	// Model
-	GRBModel model = GRBModel(env);
+	GRBModel model = GRBModel(*env);
 	model.set(GRB_StringAttr_ModelName, filename);
 
 	// Must set LazyConstraints parameter when using lazy constraints
 	model.set(GRB_IntParam_LazyConstraints, 1);
 	// Decision variables
-	unique_ptr<GRBVar[]> x_owner(model.addVars(instance.one_d.size(), GRB_BINARY));
-	GRBVar* x = x_owner.get();//edges
+	GRBVar* x = 0;//edges
+	x = model.addVars(instance.one_d.size(), GRB_BINARY);
 	for (int i = 0; i < instance.one_d.size(); i++)
 	{
 		x[i].set(GRB_DoubleAttr_Obj, instance.one_d[i].blocking_costs);
@@ -516,19 +501,16 @@ void runmodel(string filename)
 	// Create a callback object and associate it with the model
 	int ntree = 0, narc = 0, ncycle = 0;
 	lazy_status ls = lazy_status(total_time_limit, pre_process_start);
-	ls.solution = ls.root_ub = incumbent_cost;
-	ls.solution_edges = UB_solution;
 	mycallback cb = mycallback(instance.one_d.size(), x, instance, &ntree, &narc, &ncycle, &ls, incumbent_cost, UB_solution, fn);
 
 	model.setCallback(&cb);
 	clock_t now = clock();
 	double limit = total_time_limit - static_cast<double>(now - pre_process_start) / CLOCKS_PER_SEC;
-	model.set(GRB_DoubleParam_TimeLimit, max(0.0, limit));
+	model.set(GRB_DoubleParam_TimeLimit, limit);
 	model.optimize();
-	if (cb.failure) rethrow_exception(cb.failure);
 	clock_t end_time = clock();
 
-	fout.open("IP.csv", std::ios_base::app);
+	fout.open("review3_austin.csv", std::ios_base::app);
 	fout << filename << ',' << instance.vertices.size();
 	double density = number_of_edges / (static_cast<double>(instance.vertices.size() * (instance.vertices.size() - 1)) / 2);
 	fout << ',' << density << ',' << instance.desired_clique_weight;
@@ -536,7 +518,7 @@ void runmodel(string filename)
 	fout << ',' << ls.gurobi_lazy << "," << ntree << "," << narc << "," << ncycle;
 	fout << ',' << total_time_limit << ",";
 
-	if (!ls.not_TL || model.get(GRB_IntAttr_Status) == GRB_INTERRUPTED)
+	if (model.get(GRB_IntAttr_Status) == GRB_INTERRUPTED)
 	{//time limit reached in call back
 		fout << "LTL" << ',';
 	}
@@ -556,18 +538,18 @@ void runmodel(string filename)
 	{
 		fout << "ELSE" << ',';
 	}
-	if (ls.not_TL && model.get(GRB_IntAttr_SolCount) > 0)
-	{
-		fout << model.get(GRB_DoubleAttr_MIPGap) << ',';
-		fout << model.get(GRB_DoubleAttr_ObjVal) << ',';
-		fout << model.get(GRB_DoubleAttr_ObjBoundC) << ',';
+	fout << model.get(GRB_DoubleAttr_MIPGap) << ',';
+	fout << model.get(GRB_DoubleAttr_ObjVal) << ',';
+	fout << model.get(GRB_DoubleAttr_ObjBoundC) << ',';
+	fout << (ls.solution - ls.bound) / ls.solution << ',';
+	if (ls.aos == 0 && ls.take_start) {
+		fout << incumbent_cost << ',';
 	}
-	else fout << ",,,"; // An interrupted separation may have an unverified MIP solution.
-	if (ls.not_TL) ls.bound = max(0.0, model.get(GRB_DoubleAttr_ObjBound));
-	ls.bound = min(ls.bound, ls.solution);
-	fout << (ls.solution > 0 ? (ls.solution - ls.bound) / ls.solution : 0) << ',';
-	fout << ls.solution << ',' << ls.bound << ',';
-	fout << (ls.root_ub > 0 ? (ls.root_ub - ls.root_lb) / ls.root_ub : 0) << ',';
+	else {
+		fout << ls.solution << ',';
+	}
+	fout << ls.bound << ',';
+	fout << (ls.root_ub - ls.root_lb) / ls.root_ub << ',';
 	fout << ls.root_ub << ',';
 	fout << ls.root_lb << ',';
 	fout << ls.take_start << ',';
@@ -582,12 +564,24 @@ void runmodel(string filename)
 		fout << "No" << ',';
 	}
 	fout << ls.aos << ',';
-	for (int i : ls.solution_edges)
+	vector<bool> solutions;
+	solutions.reserve(instance.one_d.size());
+	for (int i = 0; i < instance.one_d.size(); i++)
 	{
-		fout << '(' << instance.one_d[i].head + 1 << ';' << instance.one_d[i].tail + 1 << ')' << ' ';
+		solutions.push_back(x[i].get(GRB_DoubleAttr_X));
+	}
+	for (int i = 0; i < instance.one_d.size(); i++)
+	{
+		if (solutions[i])
+		{
+			fout << '(' << instance.one_d[i].head + 1 << ';' << instance.one_d[i].tail + 1 << ')' << ' ';
+
+		}
 	}
 	fout << endl;
 	fout.close();
+	delete[] x;
+	delete env;
 
 }
 
@@ -601,7 +595,7 @@ double MINIMUMCUT(CDSI_instance& instance, vector<int>& edge_MC)
 		G.vset[i].assign(1, i);
 		edge_weiget[i].resize(instance.two_d[i].size(), 0);
 	}
-	for (int i = 0; i + 1 < instance.two_d.size(); i++)
+	for (int i = 0; i < instance.two_d[i].size() - 1; i++)
 	{
 		for (int j = i + 1; j < instance.two_d[i].size(); j++)
 		{
@@ -614,7 +608,7 @@ double MINIMUMCUT(CDSI_instance& instance, vector<int>& edge_MC)
 	}
 	G.two_d = edge_weiget;
 
-	double minimumcut = numeric_limits<double>::infinity();
+	double minimumcut = 100 * instance.one_d.size();
 	while (G.vset.size() > 1)
 	{
 		MINIMUMCUTPHASE(instance, G, edge_MC, minimumcut, 1);
@@ -636,7 +630,7 @@ void MINIMUMCUTPHASE(CDSI_instance& instance, graph& G, vector<int>& edge_MC, do
 	while (A.size() < G.vset.size() - 1)
 	{//ween a size equal to g size-1,we need to process tee last one
 		double MaxWeiget = 0;
-		list<int>::iterator MaxV = VminusA.begin();//point to v before max
+		list<int>::iterator MaxV;//point to v before max
 		for (list<int>::iterator it = VminusA.begin(); it != VminusA.end(); it++)
 		{
 			double temp_w = 0;
@@ -708,7 +702,7 @@ void MINIMUMCUTPHASE(CDSI_instance& instance, graph& G, vector<int>& edge_MC, do
 	G.two_d.pop_back();
 }
 
-bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& instance, char* eta_ST, clock_t start, double total_time_limit, string fn)
+bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& instance, char* eta_ST, clock_t start, clock_t total_time_limit, string fn)
 {//return true if reach time limit, else return false, eta_ST is 'A' for arc,'C' for cycle,'T' for tree
 	vector<vector<int>> neighbor;//neighbor of remaining network
 	neighbor.resize(instance.vertices.size());
@@ -725,14 +719,14 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 		return false;
 	}
 	//Defining Gurobi environment
-	GRBEnv sub_env;
+	GRBEnv* sub_env = new GRBEnv();
 
 	// Model
-	GRBModel sub_model = GRBModel(sub_env);
+	GRBModel sub_model = GRBModel(*sub_env);
 
 	// Decision variables
-	unique_ptr<GRBVar[]> y_owner(sub_model.addVars(instance.vertices.size(), GRB_BINARY));
-	GRBVar* y = y_owner.get();
+	GRBVar* y = NULL;
+	y = sub_model.addVars(instance.vertices.size(), GRB_BINARY);
 	//for (int i = 0; i < instance.vertices.size(); i++)
 	//{
 	//	y[i].set(GRB_DoubleAttr_Obj, instance.vertices[i].vertex_weight);
@@ -757,14 +751,12 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 	for (int i = 0; i < neighbor.size(); i++) {
 		lh3b += y[i] * instance.vertices[i].vertex_weight;
 		GRBLinExpr initial_constraints = 0;
-		// N(i) is a vertex cut unless i is universal. A universal vertex can dominate alone.
-		if (neighbor[i].size() + 1 == neighbor.size()) initial_constraints += y[i];
 		for (int v : neighbor[i]) {
 			initial_constraints+= y[v];
 		}
 		sub_model.addConstr(initial_constraints, GRB_GREATER_EQUAL, 1);
 	}
-	sub_model.addConstr(lh3b, GRB_LESS_EQUAL, ceil(instance.desired_clique_weight) - 1); // (2a)
+	sub_model.addConstr(lh3b, GRB_LESS_EQUAL, instance.desired_clique_weight - 0.0001);
 	sub_model.set(GRB_IntParam_Threads, 1);
 
 	//1) instead of treating constraints (2b) as feasibility conditions, one could integrate them into the objective function (e.g., minimize w^t y) and terminate early based on lower and upper bounds compared to eta -1.
@@ -783,7 +775,6 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 	sub_model.update();
 
 	sub_model.optimize();
-	if (cb.failure) rethrow_exception(cb.failure);
 	//ofstream fout;
 	//fout.open(fn, std::ios_base::app);
 	//fout << "Lazy_status:" << sub_model.get(GRB_IntAttr_Status) << endl;
@@ -792,7 +783,7 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 	//if ((sub_model.get(GRB_IntAttr_Status) == GRB_OPTIMAL && sub_model.get(GRB_DoubleAttr_ObjVal) < instance.desired_clique_weight - 0.001) || sub_model.get(GRB_IntAttr_Status) == GRB_USER_OBJ_LIMIT) {
 		vector<char> yisD;
 		yisD.resize(instance.vertices.size(), 'F');
-		int headD = -1;//store a vertex in D as the root of spanning tree
+		int headD;//store a vertex in D as the root of spanning tree
 		int countD = 0;
 		for (int i = 0; i < instance.vertices.size(); i++)
 		{
@@ -820,24 +811,39 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 			}
 		}
 		//find a spanning tree in D
-		if (headD < 0) throw logic_error("Empty CDS returned by subproblem");
-		get_ST(instance, neighbor, headD, yisD, eta_EST);
-		if (instance.vertices.size() - 2 > countD)
+		int tailD = get_ST(instance, neighbor, headD, yisD, eta_EST);
+		if ((tailD == -1) || instance.vertices.size() - 2 > countD)
 		{
 			(*eta_ST) = 'T';
 		}
 		else
 		{
-			*eta_ST = check_arc_cycle(instance, eta_EST);
+			bool is_arc = check_full_cycle(instance, remain_edges, yisD, countD, headD, tailD, eta_EST);
+			if (!is_arc)
+			{
+				*eta_ST = 'T';
+			}
+			else
+			{
+				*eta_ST = check_arc_cycle(instance, remain_edges, yisD, countD, headD, tailD, eta_EST);
+			}
 		}
+		delete[] y;
+		delete sub_env;
 		return false;
 	}
 	else if (sub_model.get(GRB_IntAttr_Status) == GRB_TIME_LIMIT)
 	{
+		delete[] y;
+		delete sub_env;
 		return true;
 	}
-	else if (sub_model.get(GRB_IntAttr_Status) == GRB_INFEASIBLE) return false;
-	else throw runtime_error("Unresolved CDS feasibility subproblem");
+	else
+	{
+		delete[] y;
+		delete sub_env;
+		return false;
+	}
 }
 bool is_graph_connected(const vector<vector<int>>& neighbor)
 {
@@ -1024,42 +1030,315 @@ int get_ST(CDSI_instance& instance, vector<vector<int>>& neighbor, int D, vector
 	}
 }
 
-// Definitions 1-3. Only a spanning path can be closed by one edge.
-int check_full_cycle(CDSI_instance& instance, const vector<int>& EST)
-{
-	vector<int> degree(instance.vertices.size(), 0);
-	for (int e : EST)
+bool check_full_cycle(CDSI_instance& instance, vector<int>& remain_edges, vector<char>& D2, int D_size, int headD, int tailD, vector<int> EST)
+{//return true if the est can make full cycle,D is assumed as a path
+	if (D_size == instance.vertices.size())
 	{
-		degree[instance.one_d[e].head]++;
-		degree[instance.one_d[e].tail]++;
-	}
-	int head = -1, tail = -1;
-	for (int v = 0; v < degree.size(); v++)
-	{
-		if (degree[v] > 2) return -1;
-		if (degree[v] == 1)
+		if (remain_edges[instance.two_d[headD][tailD]] == 1)
 		{
-			if (head == -1) head = v;
-			else tail = v;
+			return true;
 		}
+		else
+			return false;
 	}
-	if (head == -1 || tail == -1) return -1;
-	return instance.two_d[head][tail]; // Look in G, including an already-blocked edge.
+	else if (D_size == instance.vertices.size() - 1)
+	{
+		int VnotinD;
+		for (int i = 0; i < instance.vertices.size(); i++)
+		{
+			if (D2[i] == 'F')
+			{
+				VnotinD = i;
+				break;
+			}
+		}
+		int Vt = instance.two_d[VnotinD][tailD];
+		int Vh = instance.two_d[VnotinD][headD];
+		if (Vt == -1 || Vh == -1)
+		{
+			return false;
+		}
+		if (remain_edges[Vt] == 0 || remain_edges[Vh] == 0)
+		{
+			return false;
+		}
+		for (int i = 0; i < EST.size(); i++)
+		{
+			if (EST[i] == Vt || EST[i] == Vh)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+	else
+	{//|D|=|V|-2
+		int V1 = -1, V2 = -1;
+		for (int i = 0; i < instance.vertices.size(); i++)
+		{
+			if (D2[i] == 'F')
+			{
+				if (V1 == -1)
+				{
+					V1 = i;
+				}
+				else
+				{
+					V2 = i;
+					break;
+				}
+			}
+		}
+		if (instance.two_d[V1][V2] == -1 || remain_edges[instance.two_d[V1][V2]] == 0)
+		{
+			return false;
+		}
+		int V1t = instance.two_d[V1][tailD];
+		int V1h = instance.two_d[V1][headD];
+		int V2t = instance.two_d[V2][tailD];
+		int V2h = instance.two_d[V2][headD];
+		if ((V1t == -1 || V2h == -1) && (V2t == 1 || V1h == -1))
+		{
+			return false;
+		}
+		if ((remain_edges[V1t] == 0 || remain_edges[V2h] == 0) && (remain_edges[V2t] == 0 || remain_edges[V1h] == 0))
+		{
+			return false;
+		}
+		for (int i = 0; i < EST.size(); i++)
+		{
+			if (EST[i] == V1t)
+			{
+				for (int j = i + 1; j < EST.size(); j++)
+				{
+					if (EST[j] == V2h)
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+			else if (EST[i] == V1h)
+			{
+				for (int j = i + 1; j < EST.size(); j++)
+				{
+					if (EST[j] == V2t)
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+			else if (EST[i] == V2h)
+			{
+				for (int j = i + 1; j < EST.size(); j++)
+				{
+					if (EST[j] == V1t)
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+			else if (EST[i] == V2t)
+			{
+				for (int j = i + 1; j < EST.size(); j++)
+				{
+					if (EST[j] == V1h)
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+		}
+		return false;
+	}
 }
 
-char check_arc_cycle(CDSI_instance& instance, vector<int>& EST)
-{
-	int closing = check_full_cycle(instance, EST);
-	if (closing == -1) return 'T';
-	// The internal vertices of the input path already weigh less than eta.
-	// Test each other possible pair of leaves before declaring a full eta-cycle.
-	for (int e : EST)
+char check_arc_cycle(CDSI_instance& instance, vector<int>& remain_edges, vector<char>& D2, int D_size, int headD, int tailD, vector<int> EST)
+{//return 'A' if the est is an arc, 'C' if the est is a cycle
+ //we add the edge to close the cycle if it is a cycle
+	if (D_size == instance.vertices.size())
 	{
-		int h = instance.one_d[e].head, t = instance.one_d[e].tail;
-		if (instance.total_weight - instance.vertices[h].vertex_weight - instance.vertices[t].vertex_weight >= instance.desired_clique_weight) return 'A';
+		for (int i = 0; i < EST.size(); i++)
+		{
+			int h = instance.one_d[EST[i]].head;
+			int t = instance.one_d[EST[i]].tail;
+			if (instance.total_weight - instance.vertices[h].vertex_weight - instance.vertices[t].vertex_weight >= instance.desired_clique_weight)
+			{
+				return 'A';
+			}
+		}
+		if (instance.total_weight - instance.vertices[headD].vertex_weight - instance.vertices[tailD].vertex_weight >= instance.desired_clique_weight)
+		{
+			return 'A';
+		}
+		else
+		{
+			EST.push_back(instance.two_d[headD][tailD]);
+			return 'C';
+		}
 	}
-	EST.push_back(closing);
-	return 'C';
+	else if (D_size == instance.vertices.size() - 1)
+	{
+		int VnotinD;
+		for (int i = 0; i < instance.vertices.size(); i++)
+		{
+			if (D2[i] == 'F')
+			{
+				VnotinD = i;
+				break;
+			}
+		}
+		for (int i = 0; i < EST.size(); i++)
+		{
+			int h = instance.one_d[EST[i]].head;
+			int t = instance.one_d[EST[i]].tail;
+			if (instance.total_weight - instance.vertices[h].vertex_weight - instance.vertices[t].vertex_weight >= instance.desired_clique_weight)
+			{
+				return 'A';
+			}
+			if (h == VnotinD)
+			{
+				if (t == headD)
+				{
+					if (instance.total_weight - instance.vertices[tailD].vertex_weight - instance.vertices[VnotinD].vertex_weight >= instance.desired_clique_weight)
+					{
+						return 'A';
+					}
+					else
+					{
+						EST.push_back(instance.two_d[tailD][VnotinD]);
+						return 'C';
+					}
+				}
+				else
+				{
+					if (instance.total_weight - instance.vertices[headD].vertex_weight - instance.vertices[VnotinD].vertex_weight >= instance.desired_clique_weight)
+					{
+						return 'A';
+					}
+					else
+					{
+						EST.push_back(instance.two_d[headD][VnotinD]);
+						return 'C';
+					}
+				}
+			}
+			else if (t == VnotinD)
+			{
+				if (h == headD)
+				{
+					if (instance.total_weight - instance.vertices[tailD].vertex_weight - instance.vertices[VnotinD].vertex_weight >= instance.desired_clique_weight)
+					{
+						return 'A';
+					}
+					else
+					{
+						EST.push_back(instance.two_d[tailD][VnotinD]);
+						return 'C';
+					}
+				}
+				else
+				{
+					if (instance.total_weight - instance.vertices[headD].vertex_weight - instance.vertices[VnotinD].vertex_weight >= instance.desired_clique_weight)
+					{
+						return 'A';
+					}
+					else
+					{
+						EST.push_back(instance.two_d[headD][VnotinD]);
+						return 'C';
+					}
+				}
+			}
+		}
+	}
+	else
+	{//|D|=|V|-2
+		int V1 = -1, V2 = -1;
+		for (int i = 0; i < instance.vertices.size(); i++)
+		{
+			if (D2[i] == 'F')
+			{
+				if (V1 == -1)
+				{
+					V1 = i;
+				}
+				else
+				{
+					V2 = i;
+					break;
+				}
+			}
+		}
+		if (instance.total_weight - instance.vertices[V1].vertex_weight - instance.vertices[V2].vertex_weight >= instance.desired_clique_weight)
+		{
+			return 'A';
+		}
+		int V1t = instance.two_d[V1][tailD];
+		int V1h = instance.two_d[V1][headD];
+		int V2t = instance.two_d[V2][tailD];
+		int V2h = instance.two_d[V2][headD];
+		for (int i = 0; i < EST.size(); i++)
+		{
+			int h = instance.one_d[EST[i]].head;
+			int t = instance.one_d[EST[i]].tail;
+			if (instance.total_weight - instance.vertices[h].vertex_weight - instance.vertices[t].vertex_weight >= instance.desired_clique_weight)
+			{
+				return 'A';
+			}
+			if (EST[i] == V1t)
+			{
+				if (instance.total_weight - instance.vertices[V2].vertex_weight - instance.vertices[headD].vertex_weight >= instance.desired_clique_weight)
+				{
+					return 'A';
+				}
+				else
+				{
+					EST.push_back(instance.two_d[headD][V2]);
+					return 'C';
+				}
+			}
+			else if (EST[i] == V1h)
+			{
+				if (instance.total_weight - instance.vertices[V2].vertex_weight - instance.vertices[tailD].vertex_weight >= instance.desired_clique_weight)
+				{
+					return 'A';
+				}
+				else
+				{
+					EST.push_back(instance.two_d[tailD][V2]);
+					return 'C';
+				}
+			}
+			else if (EST[i] == V2h)
+			{
+				if (instance.total_weight - instance.vertices[V1].vertex_weight - instance.vertices[tailD].vertex_weight >= instance.desired_clique_weight)
+				{
+					return 'A';
+				}
+				else
+				{
+					EST.push_back(instance.two_d[tailD][V1]);
+					return 'C';
+				}
+			}
+			else if (EST[i] == V2t)
+			{
+				if (instance.total_weight - instance.vertices[V1].vertex_weight - instance.vertices[headD].vertex_weight >= instance.desired_clique_weight)
+				{
+					return 'A';
+				}
+				else
+				{
+					EST.push_back(instance.two_d[headD][V1]);
+					return 'C';
+				}
+			}
+		}
+	}
 }
 
 int readdata(CDSI_instance& instance, string filename)
@@ -1068,9 +1347,9 @@ int readdata(CDSI_instance& instance, string filename)
 	fin.open(filename);
 	string str3;
 	int number_of_points, number_of_edges;
-	if (!(fin >> number_of_points >> number_of_edges) || number_of_points < 3 || number_of_edges < 0)
-		throw runtime_error("Invalid graph header in " + filename);
-	if (!(fin >> instance.desired_clique_weight)) throw runtime_error("Invalid eta in " + filename);
+	fin >> number_of_points;
+	fin >> number_of_edges;
+	fin >> instance.desired_clique_weight;
 	instance.two_d.resize(number_of_points);
 	instance.vertices.resize(number_of_points);
 	instance.neighbor.resize(number_of_points);
@@ -1083,7 +1362,7 @@ int readdata(CDSI_instance& instance, string filename)
 	{
 		getline(fin, str3);
 		istringstream ss0(str3);
-		if (!(ss0 >> instance.vertices[i].vertex_weight)) throw runtime_error("Invalid vertex weight in " + filename);
+		ss0 >> instance.vertices[i].vertex_weight;
 		instance.total_weight += instance.vertices[i].vertex_weight;
 	}
 	int ondn = 0;
@@ -1092,14 +1371,14 @@ int readdata(CDSI_instance& instance, string filename)
 		getline(fin, str3);
 		istringstream ss0(str3);
 		int h, t;
-		if (!(ss0 >> h >> t) || h < 1 || t < 1 || h > number_of_points || t > number_of_points)
-			throw runtime_error("Invalid edge in " + filename);
+		ss0 >> h;
+		ss0 >> t;
 		h--;
 		t--;
 		if (instance.two_d[h][t] == -1)
 		{
 			double temp_cost;
-			if (!(ss0 >> temp_cost)) throw runtime_error("Invalid edge cost in " + filename);
+			ss0 >> temp_cost;
 			instance.one_d.push_back(edge(h, t, temp_cost));
 			instance.two_d[h][t] = ondn++;
 			instance.two_d[t][h] = instance.two_d[h][t];
