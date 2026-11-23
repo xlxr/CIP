@@ -1,4 +1,4 @@
-//Github version CBB
+//Git version
 
 #include <iostream>
 #include <limits>
@@ -588,7 +588,7 @@ void branch(CDSI_instance& instance, list<node>& tree, vector<pair<int, double>>
 	node parent = std::move(tree.front());
 	tree.pop_front();
 
-	node tqnode = parent;              // ֻ����һ��
+	node tqnode = parent;              // 只拷贝一次
 	tqnode.Splusq.push_back(e);
 	tqnode.status[e] = '1';
 	tqnode.b = false;
@@ -898,7 +898,7 @@ double lower_bound(CDSI_instance& instance, node& q, vector<EST>& estlist, vecto
 			else if (c < second) second = c;
 		}
 		return required == 1 ? first : first + second;
-	};
+		};
 	auto remove_edges = [&](const vector<int>& edges) {
 		for (int e : edges)
 		{
@@ -906,7 +906,7 @@ double lower_bound(CDSI_instance& instance, node& q, vector<EST>& estlist, vecto
 		}
 		heud.erase(remove_if(heud.begin(), heud.end(),
 			[&](int e) { return he[e] != '2'; }), heud.end());
-	};
+		};
 	auto in_time = [&]() { return double(clock() - start) / CLOCKS_PER_SEC < ttl; };
 
 	while (in_time())
@@ -928,7 +928,7 @@ double lower_bound(CDSI_instance& instance, node& q, vector<EST>& estlist, vecto
 				double delta = available < required ? inf : cost(item.EST1, q.status, required);
 				if (delta > best_cost) { best_cost = delta; best = &item; }
 			}
-		};
+			};
 		consider(estlist, 1);
 		consider(cycles, 2);
 		if (best == nullptr) break;
