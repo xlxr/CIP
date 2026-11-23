@@ -156,8 +156,8 @@ bool is_graph_connected(const vector<vector<int>>& neighbor);
 int check_connectivity(vector<vector<int>>& neighbor, vector<char>& selected_vertices2, vector<int>& selected_vertices1);
 vector<int> make_minimal_vertex_cut(vector<vector<int>>& neighbor, const vector<int>& C1, vector<char>& C2);
 int get_ST(CDSI_instance& instance, vector<vector<int>>& neighbor, int D, vector<char>& D2, vector<int>& STE);
-bool check_full_cycle(CDSI_instance& instance, vector<int>& remain_edges, vector<char>& D2, int D_size, int headD, int tailD, vector<int> EST);
-char check_arc_cycle(CDSI_instance& instance, vector<int>& remain_edges, vector<char>& D2, int D_size, int headD, int tailD, vector<int> EST);
+int check_full_cycle(CDSI_instance& instance, const vector<int>& EST);
+char check_arc_cycle(CDSI_instance& instance, vector<int>& EST);
 
 class mycallback : public GRBCallback
 {
@@ -404,33 +404,11 @@ void MINIMUMCUTPHASE(CDSI_instance& instance, graph& G, vector<int>& edge_MC, do
 int main()
 {
 	ofstream fout;
-	fout.open("review3_austin.csv");
+	fout.open("IP.csv");
 	fout << "File Name,|V|,density,Eta,number_of_lazy,gurobi_#lazy,#tree,#arc,#cycle,Time Limit (s),Run Time (s),Gurobi gap,Gurobi ub,Gurobi lb,manual gap, manual ub, manual lb,root gap,root ub,root lb,take_start, Nodes #,min_cut,mincut not optimal, alternative solution,Sols" << endl;
 	fout.close();
 
 	ifstream fin;
-	fin.open("filename-real.txt");
-	string str3;
-	int number_of_files;
-	fin >> number_of_files;
-	//finish reading the current line
-	getline(fin, str3);
-	for (int i = 0; i < number_of_files; i++)
-	{
-		getline(fin, str3);
-		runmodel(str3);
-	}
-	fin.close();
-	fin.open("filename-random.txt");
-	fin >> number_of_files;
-	//finish reading the current line
-	getline(fin, str3);
-	for (int i = 0; i < number_of_files; i++)
-	{
-		getline(fin, str3);
-		runmodel(str3);
-	}
-
 	fin.open("filename.txt");
 	fin >> number_of_files;
 	//finish reading the current line
@@ -510,7 +488,7 @@ void runmodel(string filename)
 	model.optimize();
 	clock_t end_time = clock();
 
-	fout.open("review3_austin.csv", std::ios_base::app);
+	fout.open("IP.csv", std::ios_base::app);
 	fout << filename << ',' << instance.vertices.size();
 	double density = number_of_edges / (static_cast<double>(instance.vertices.size() * (instance.vertices.size() - 1)) / 2);
 	fout << ',' << density << ',' << instance.desired_clique_weight;
@@ -751,6 +729,8 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 	for (int i = 0; i < neighbor.size(); i++) {
 		lh3b += y[i] * instance.vertices[i].vertex_weight;
 		GRBLinExpr initial_constraints = 0;
+		// A universal vertex is a connected dominating set by itself.
+		if (neighbor[i].size() + 1 == neighbor.size()) initial_constraints += y[i];
 		for (int v : neighbor[i]) {
 			initial_constraints+= y[v];
 		}
@@ -811,22 +791,14 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 			}
 		}
 		//find a spanning tree in D
-		int tailD = get_ST(instance, neighbor, headD, yisD, eta_EST);
-		if ((tailD == -1) || instance.vertices.size() - 2 > countD)
+		get_ST(instance, neighbor, headD, yisD, eta_EST);
+		if (instance.vertices.size() - 2 > countD)
 		{
 			(*eta_ST) = 'T';
 		}
 		else
 		{
-			bool is_arc = check_full_cycle(instance, remain_edges, yisD, countD, headD, tailD, eta_EST);
-			if (!is_arc)
-			{
-				*eta_ST = 'T';
-			}
-			else
-			{
-				*eta_ST = check_arc_cycle(instance, remain_edges, yisD, countD, headD, tailD, eta_EST);
-			}
+			*eta_ST = check_arc_cycle(instance, eta_EST);
 		}
 		delete[] y;
 		delete sub_env;
@@ -1030,315 +1002,42 @@ int get_ST(CDSI_instance& instance, vector<vector<int>>& neighbor, int D, vector
 	}
 }
 
-bool check_full_cycle(CDSI_instance& instance, vector<int>& remain_edges, vector<char>& D2, int D_size, int headD, int tailD, vector<int> EST)
-{//return true if the est can make full cycle,D is assumed as a path
-	if (D_size == instance.vertices.size())
+// Definitions 1-3. Only a spanning path can be closed by one edge.
+int check_full_cycle(CDSI_instance& instance, const vector<int>& EST)
+{
+	vector<int> degree(instance.vertices.size(), 0);
+	for (int e : EST)
 	{
-		if (remain_edges[instance.two_d[headD][tailD]] == 1)
-		{
-			return true;
-		}
-		else
-			return false;
+		degree[instance.one_d[e].head]++;
+		degree[instance.one_d[e].tail]++;
 	}
-	else if (D_size == instance.vertices.size() - 1)
+	int head = -1, tail = -1;
+	for (int v = 0; v < degree.size(); v++)
 	{
-		int VnotinD;
-		for (int i = 0; i < instance.vertices.size(); i++)
+		if (degree[v] > 2) return -1;
+		if (degree[v] == 1)
 		{
-			if (D2[i] == 'F')
-			{
-				VnotinD = i;
-				break;
-			}
+			if (head == -1) head = v;
+			else tail = v;
 		}
-		int Vt = instance.two_d[VnotinD][tailD];
-		int Vh = instance.two_d[VnotinD][headD];
-		if (Vt == -1 || Vh == -1)
-		{
-			return false;
-		}
-		if (remain_edges[Vt] == 0 || remain_edges[Vh] == 0)
-		{
-			return false;
-		}
-		for (int i = 0; i < EST.size(); i++)
-		{
-			if (EST[i] == Vt || EST[i] == Vh)
-			{
-				return true;
-			}
-		}
-		return false;
 	}
-	else
-	{//|D|=|V|-2
-		int V1 = -1, V2 = -1;
-		for (int i = 0; i < instance.vertices.size(); i++)
-		{
-			if (D2[i] == 'F')
-			{
-				if (V1 == -1)
-				{
-					V1 = i;
-				}
-				else
-				{
-					V2 = i;
-					break;
-				}
-			}
-		}
-		if (instance.two_d[V1][V2] == -1 || remain_edges[instance.two_d[V1][V2]] == 0)
-		{
-			return false;
-		}
-		int V1t = instance.two_d[V1][tailD];
-		int V1h = instance.two_d[V1][headD];
-		int V2t = instance.two_d[V2][tailD];
-		int V2h = instance.two_d[V2][headD];
-		if ((V1t == -1 || V2h == -1) && (V2t == 1 || V1h == -1))
-		{
-			return false;
-		}
-		if ((remain_edges[V1t] == 0 || remain_edges[V2h] == 0) && (remain_edges[V2t] == 0 || remain_edges[V1h] == 0))
-		{
-			return false;
-		}
-		for (int i = 0; i < EST.size(); i++)
-		{
-			if (EST[i] == V1t)
-			{
-				for (int j = i + 1; j < EST.size(); j++)
-				{
-					if (EST[j] == V2h)
-					{
-						return true;
-					}
-				}
-				return false;
-			}
-			else if (EST[i] == V1h)
-			{
-				for (int j = i + 1; j < EST.size(); j++)
-				{
-					if (EST[j] == V2t)
-					{
-						return true;
-					}
-				}
-				return false;
-			}
-			else if (EST[i] == V2h)
-			{
-				for (int j = i + 1; j < EST.size(); j++)
-				{
-					if (EST[j] == V1t)
-					{
-						return true;
-					}
-				}
-				return false;
-			}
-			else if (EST[i] == V2t)
-			{
-				for (int j = i + 1; j < EST.size(); j++)
-				{
-					if (EST[j] == V1h)
-					{
-						return true;
-					}
-				}
-				return false;
-			}
-		}
-		return false;
-	}
+	if (head == -1 || tail == -1) return -1;
+	return instance.two_d[head][tail]; // Look in G, including an already-blocked edge.
 }
 
-char check_arc_cycle(CDSI_instance& instance, vector<int>& remain_edges, vector<char>& D2, int D_size, int headD, int tailD, vector<int> EST)
-{//return 'A' if the est is an arc, 'C' if the est is a cycle
- //we add the edge to close the cycle if it is a cycle
-	if (D_size == instance.vertices.size())
+char check_arc_cycle(CDSI_instance& instance, vector<int>& EST)
+{
+	int closing = check_full_cycle(instance, EST);
+	if (closing == -1) return 'T';
+	// The internal vertices of the input path already weigh less than eta.
+	// Test each other possible pair of leaves before declaring a full eta-cycle.
+	for (int e : EST)
 	{
-		for (int i = 0; i < EST.size(); i++)
-		{
-			int h = instance.one_d[EST[i]].head;
-			int t = instance.one_d[EST[i]].tail;
-			if (instance.total_weight - instance.vertices[h].vertex_weight - instance.vertices[t].vertex_weight >= instance.desired_clique_weight)
-			{
-				return 'A';
-			}
-		}
-		if (instance.total_weight - instance.vertices[headD].vertex_weight - instance.vertices[tailD].vertex_weight >= instance.desired_clique_weight)
-		{
-			return 'A';
-		}
-		else
-		{
-			EST.push_back(instance.two_d[headD][tailD]);
-			return 'C';
-		}
+		int h = instance.one_d[e].head, t = instance.one_d[e].tail;
+		if (instance.total_weight - instance.vertices[h].vertex_weight - instance.vertices[t].vertex_weight >= instance.desired_clique_weight) return 'A';
 	}
-	else if (D_size == instance.vertices.size() - 1)
-	{
-		int VnotinD;
-		for (int i = 0; i < instance.vertices.size(); i++)
-		{
-			if (D2[i] == 'F')
-			{
-				VnotinD = i;
-				break;
-			}
-		}
-		for (int i = 0; i < EST.size(); i++)
-		{
-			int h = instance.one_d[EST[i]].head;
-			int t = instance.one_d[EST[i]].tail;
-			if (instance.total_weight - instance.vertices[h].vertex_weight - instance.vertices[t].vertex_weight >= instance.desired_clique_weight)
-			{
-				return 'A';
-			}
-			if (h == VnotinD)
-			{
-				if (t == headD)
-				{
-					if (instance.total_weight - instance.vertices[tailD].vertex_weight - instance.vertices[VnotinD].vertex_weight >= instance.desired_clique_weight)
-					{
-						return 'A';
-					}
-					else
-					{
-						EST.push_back(instance.two_d[tailD][VnotinD]);
-						return 'C';
-					}
-				}
-				else
-				{
-					if (instance.total_weight - instance.vertices[headD].vertex_weight - instance.vertices[VnotinD].vertex_weight >= instance.desired_clique_weight)
-					{
-						return 'A';
-					}
-					else
-					{
-						EST.push_back(instance.two_d[headD][VnotinD]);
-						return 'C';
-					}
-				}
-			}
-			else if (t == VnotinD)
-			{
-				if (h == headD)
-				{
-					if (instance.total_weight - instance.vertices[tailD].vertex_weight - instance.vertices[VnotinD].vertex_weight >= instance.desired_clique_weight)
-					{
-						return 'A';
-					}
-					else
-					{
-						EST.push_back(instance.two_d[tailD][VnotinD]);
-						return 'C';
-					}
-				}
-				else
-				{
-					if (instance.total_weight - instance.vertices[headD].vertex_weight - instance.vertices[VnotinD].vertex_weight >= instance.desired_clique_weight)
-					{
-						return 'A';
-					}
-					else
-					{
-						EST.push_back(instance.two_d[headD][VnotinD]);
-						return 'C';
-					}
-				}
-			}
-		}
-	}
-	else
-	{//|D|=|V|-2
-		int V1 = -1, V2 = -1;
-		for (int i = 0; i < instance.vertices.size(); i++)
-		{
-			if (D2[i] == 'F')
-			{
-				if (V1 == -1)
-				{
-					V1 = i;
-				}
-				else
-				{
-					V2 = i;
-					break;
-				}
-			}
-		}
-		if (instance.total_weight - instance.vertices[V1].vertex_weight - instance.vertices[V2].vertex_weight >= instance.desired_clique_weight)
-		{
-			return 'A';
-		}
-		int V1t = instance.two_d[V1][tailD];
-		int V1h = instance.two_d[V1][headD];
-		int V2t = instance.two_d[V2][tailD];
-		int V2h = instance.two_d[V2][headD];
-		for (int i = 0; i < EST.size(); i++)
-		{
-			int h = instance.one_d[EST[i]].head;
-			int t = instance.one_d[EST[i]].tail;
-			if (instance.total_weight - instance.vertices[h].vertex_weight - instance.vertices[t].vertex_weight >= instance.desired_clique_weight)
-			{
-				return 'A';
-			}
-			if (EST[i] == V1t)
-			{
-				if (instance.total_weight - instance.vertices[V2].vertex_weight - instance.vertices[headD].vertex_weight >= instance.desired_clique_weight)
-				{
-					return 'A';
-				}
-				else
-				{
-					EST.push_back(instance.two_d[headD][V2]);
-					return 'C';
-				}
-			}
-			else if (EST[i] == V1h)
-			{
-				if (instance.total_weight - instance.vertices[V2].vertex_weight - instance.vertices[tailD].vertex_weight >= instance.desired_clique_weight)
-				{
-					return 'A';
-				}
-				else
-				{
-					EST.push_back(instance.two_d[tailD][V2]);
-					return 'C';
-				}
-			}
-			else if (EST[i] == V2h)
-			{
-				if (instance.total_weight - instance.vertices[V1].vertex_weight - instance.vertices[tailD].vertex_weight >= instance.desired_clique_weight)
-				{
-					return 'A';
-				}
-				else
-				{
-					EST.push_back(instance.two_d[tailD][V1]);
-					return 'C';
-				}
-			}
-			else if (EST[i] == V2t)
-			{
-				if (instance.total_weight - instance.vertices[V1].vertex_weight - instance.vertices[headD].vertex_weight >= instance.desired_clique_weight)
-				{
-					return 'A';
-				}
-				else
-				{
-					EST.push_back(instance.two_d[headD][V1]);
-					return 'C';
-				}
-			}
-		}
-	}
+	EST.push_back(closing);
+	return 'C';
 }
 
 int readdata(CDSI_instance& instance, string filename)
