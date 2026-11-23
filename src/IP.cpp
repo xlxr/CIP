@@ -151,7 +151,7 @@ public:
 	}
 };
 
-bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& instance, char* eta_ST, clock_t start, clock_t total_time_limit, string);\
+bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& instance, char* eta_ST, clock_t start, clock_t total_time_limit, string); \
 bool is_graph_connected(const vector<vector<int>>& neighbor);
 int check_connectivity(vector<vector<int>>& neighbor, vector<char>& selected_vertices2, vector<int>& selected_vertices1);
 vector<int> make_minimal_vertex_cut(vector<vector<int>>& neighbor, const vector<int>& C1, vector<char>& C2);
@@ -340,19 +340,19 @@ public:
 	GRBVar* varsx;
 	vector < vector<int>> neighbor;
 	double total_time_limit;
-	mycallback2(int xnumvars, GRBVar* xvarsx, vector < vector<int>>&nb, double ttl)
+	mycallback2(int xnumvars, GRBVar* xvarsx, vector < vector<int>>& nb, double ttl)
 	{
 		numx = xnumvars;
 		varsx = xvarsx;
 		neighbor = nb;
-		total_time_limit=ttl;
+		total_time_limit = ttl;
 	}
 protected:
 	void callback() {
 		try {
 			if (where == GRB_CB_MIPSOL) {
 				double* x = getSolution(varsx, numx);
-				vector<char> selected_vertices2(numx,'F');
+				vector<char> selected_vertices2(numx, 'F');
 				vector<int> selected_vertices1;
 				for (int i = 0; i < numx; i++)
 				{
@@ -365,7 +365,7 @@ protected:
 
 				if (!check_connectivity(neighbor, selected_vertices2, selected_vertices1)) {//notconnected
 					vector<int> C1;
-					vector<char> C2(selected_vertices2.size(),'F');
+					vector<char> C2(selected_vertices2.size(), 'F');
 					for (int i = 0; i < selected_vertices2.size(); i++) {
 						if (selected_vertices2[i] == 'F') {
 							C2[i] = 'T';
@@ -409,6 +409,8 @@ int main()
 	fout.close();
 
 	ifstream fin;
+	string str3;
+	int number_of_files;
 	fin.open("filename.txt");
 	fin >> number_of_files;
 	//finish reading the current line
@@ -732,7 +734,7 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 		// A universal vertex is a connected dominating set by itself.
 		if (neighbor[i].size() + 1 == neighbor.size()) initial_constraints += y[i];
 		for (int v : neighbor[i]) {
-			initial_constraints+= y[v];
+			initial_constraints += y[v];
 		}
 		sub_model.addConstr(initial_constraints, GRB_GREATER_EQUAL, 1);
 	}
@@ -758,9 +760,9 @@ bool get_EST(vector<int>& remain_edges, vector<int>& eta_EST, CDSI_instance& ins
 	//ofstream fout;
 	//fout.open(fn, std::ios_base::app);
 	//fout << "Lazy_status:" << sub_model.get(GRB_IntAttr_Status) << endl;
-	
-	if (sub_model.get(GRB_IntAttr_Status) == GRB_OPTIMAL){
-	//if ((sub_model.get(GRB_IntAttr_Status) == GRB_OPTIMAL && sub_model.get(GRB_DoubleAttr_ObjVal) < instance.desired_clique_weight - 0.001) || sub_model.get(GRB_IntAttr_Status) == GRB_USER_OBJ_LIMIT) {
+
+	if (sub_model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
+		//if ((sub_model.get(GRB_IntAttr_Status) == GRB_OPTIMAL && sub_model.get(GRB_DoubleAttr_ObjVal) < instance.desired_clique_weight - 0.001) || sub_model.get(GRB_IntAttr_Status) == GRB_USER_OBJ_LIMIT) {
 		vector<char> yisD;
 		yisD.resize(instance.vertices.size(), 'F');
 		int headD;//store a vertex in D as the root of spanning tree
@@ -853,7 +855,7 @@ bool is_graph_connected(const vector<vector<int>>& neighbor)
 
 	return reached == n;
 }
-int check_connectivity(vector<vector<int>>& neighbor, vector<char>& selected_vertices2, vector<int>& selected_vertices1){
+int check_connectivity(vector<vector<int>>& neighbor, vector<char>& selected_vertices2, vector<int>& selected_vertices1) {
 	//check connectivity with breadth first search strategy,return true if connected
 	vector<char> accessD;
 	accessD.resize(selected_vertices2.size(), 'F');
@@ -861,29 +863,29 @@ int check_connectivity(vector<vector<int>>& neighbor, vector<char>& selected_ver
 	accessD[selected_vertices1[0]] = 'T';
 	searchQ.push(selected_vertices1[0]);
 	int addcount = 1;
-	while (!searchQ.empty()){
+	while (!searchQ.empty()) {
 		int tV = searchQ.front();
 		searchQ.pop();
-		for (int nti:neighbor[tV]){
-			if (selected_vertices2[nti] == 'T' && accessD[nti] == 'F'){
+		for (int nti : neighbor[tV]) {
+			if (selected_vertices2[nti] == 'T' && accessD[nti] == 'F') {
 				searchQ.push(nti);
 				accessD[nti] = 'T';
 				addcount++;
 			}
 		}
 	}
-	return addcount== selected_vertices1.size();
+	return addcount == selected_vertices1.size();
 }
 
-vector<int> make_minimal_vertex_cut(vector<vector<int>>& neighbor, const vector<int>& C1,vector<char>& C2) {
+vector<int> make_minimal_vertex_cut(vector<vector<int>>& neighbor, const vector<int>& C1, vector<char>& C2) {
 	int n = static_cast<int>(neighbor.size());
-	vector<char> inC=C2;
+	vector<char> inC = C2;
 	// Step 1: C' ← { v ∈ C : ∃ w ∉ C with {v, w} ∈ E }
 	std::vector<int> CprimeList;
 	for (int v : C1) {
 		bool hasOutsideNeighbor = false;
 		for (int w : neighbor[v]) {
-			if (C2[w]=='F') { // neighbor not in original C
+			if (C2[w] == 'F') { // neighbor not in original C
 				hasOutsideNeighbor = true;
 				break;
 			}
@@ -898,9 +900,9 @@ vector<int> make_minimal_vertex_cut(vector<vector<int>>& neighbor, const vector<
 	// Step 2: S := connected components of G[V \ C'].
 	DSU dsu(n);
 	for (int u = 0; u < n; ++u) {
-		if (inC[u]=='T') continue; // u is in C', not in S
+		if (inC[u] == 'T') continue; // u is in C', not in S
 		for (int v : neighbor[u]) {
-			if (inC[v]=='F') {
+			if (inC[v] == 'F') {
 				dsu.unite(u, v);
 			}
 		}
@@ -910,18 +912,18 @@ vector<int> make_minimal_vertex_cut(vector<vector<int>>& neighbor, const vector<
 		vector<char> rootSeen(n, 'F');
 		vector<int> roots;
 		for (int v = 0; v < n; ++v) {
-			if (inC_ref[v]=='T') continue; // only vertices in S
+			if (inC_ref[v] == 'T') continue; // only vertices in S
 			int r = dsu.find(v);
-			if (rootSeen[r]=='F') {
+			if (rootSeen[r] == 'F') {
 				rootSeen[r] = 1;
 				roots.push_back(r);
 			}
 		}
 		return roots; // DSU roots representing components in S
-	};
+		};
 	// Step 3: for v ∈ C' do ...
 	for (int v : CprimeList) {
-		if (inC[v]=='F') continue; // might have been removed earlier; skip
+		if (inC[v] == 'F') continue; // might have been removed earlier; skip
 		// Current components S of G[V \ C']
 		vector<int> roots = get_component_roots(inC);
 		int numComponents = static_cast<int>(roots.size());
@@ -929,9 +931,9 @@ vector<int> make_minimal_vertex_cut(vector<vector<int>>& neighbor, const vector<
 		vector<char> touchedRoot(n, 'F');
 		int touchedCount = 0;
 		for (int w : neighbor[v]) {
-			if (inC[w]=='T') continue; // neighbors in C' don't belong to S
+			if (inC[w] == 'T') continue; // neighbors in C' don't belong to S
 			int r = dsu.find(w);
-			if (touchedRoot[r]=='F') {
+			if (touchedRoot[r] == 'F') {
 				touchedRoot[r] = 'T';
 				++touchedCount;
 			}
@@ -945,7 +947,7 @@ vector<int> make_minimal_vertex_cut(vector<vector<int>>& neighbor, const vector<
 		inC[v] = 'F'; // v joins S = V \ C'
 
 		for (int w : neighbor[v]) {
-			if (inC[w]=='F') { // w is in S
+			if (inC[w] == 'F') { // w is in S
 				dsu.unite(v, w);
 			}
 		}
@@ -954,7 +956,7 @@ vector<int> make_minimal_vertex_cut(vector<vector<int>>& neighbor, const vector<
 	// Collect the final C' = { v : inC[v] == 1 }
 	vector<int> Cprime;
 	for (int v = 0; v < n; ++v) {
-		if (inC[v]=='T') Cprime.push_back(v);
+		if (inC[v] == 'T') Cprime.push_back(v);
 	}
 	return Cprime;
 }
