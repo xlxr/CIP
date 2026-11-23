@@ -1,7 +1,4 @@
-//add a lazy cut of an EST each time
-//use Austin's paper's based IP formulation to detect EST
-//use min cut at the beginning
-//check connectivity at the beginning of the separatio 4/2/2026
+//Github version IP
 #include <vector>
 #include <cmath>
 #include <exception>
